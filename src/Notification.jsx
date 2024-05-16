@@ -7,6 +7,8 @@ import {
   AppRegistry,
   TouchableOpacity,
   TextInput,
+  Alert,
+  AppState,
 } from 'react-native';
 import RNAndroidNotificationListener, {
   RNAndroidNotificationListenerHeadlessJsName,

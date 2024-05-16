@@ -2119,15 +2119,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@notifee/react-native@npm:^7.8.2":
-  version: 7.8.2
-  resolution: "@notifee/react-native@npm:7.8.2"
-  peerDependencies:
-    react-native: "*"
-  checksum: f3b3ea116653d4dc7b50f8124898f9e22567ae30306225841d2057bc9ce40d451b15436dff3e60e0e042ffd7f34338054b202cd2dc61c5dc5eab7676b625b9f9
-  languageName: node
-  linkType: hard
-
 "@npmcli/agent@npm:^2.0.0":
   version: 2.2.2
   resolution: "@npmcli/agent@npm:2.2.2"
@@ -8020,6 +8011,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-native-background-fetch@npm:^4.2.5":
+  version: 4.2.5
+  resolution: "react-native-background-fetch@npm:4.2.5"
+  checksum: d124418a69377f0399b72cb86bfea5e801a4dc2d5b8215e6736fd21836a82ad514a3b89fd2915b866c205e6e7f2feddd0486d4893a0261e7d978502773397d45
+  languageName: node
+  linkType: hard
+
 "react-native-get-sms-android@npm:^2.1.0":
   version: 2.1.0
   resolution: "react-native-get-sms-android@npm:2.1.0"
@@ -8717,7 +8715,6 @@ __metadata:
     "@babel/core": ^7.20.0
     "@babel/preset-env": ^7.20.0
     "@babel/runtime": ^7.20.0
-    "@notifee/react-native": ^7.8.2
     "@react-native/babel-preset": 0.74.83
     "@react-native/eslint-config": 0.74.83
     "@react-native/metro-config": 0.74.83
@@ -8732,6 +8729,7 @@ __metadata:
     react: 18.2.0
     react-native: 0.74.1
     react-native-android-notification-listener: ^5.0.1
+    react-native-background-fetch: ^4.2.5
     react-native-get-sms-android: ^2.1.0
     react-native-permissions: ^4.1.5
     react-native-push-notification: ^8.1.1

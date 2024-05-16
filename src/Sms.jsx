@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
+  AppState,
 } from 'react-native';
 import SmsAndroid from 'react-native-get-sms-android';
 import {check, PERMISSIONS, request} from 'react-native-permissions';
