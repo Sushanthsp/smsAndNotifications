@@ -13,6 +13,8 @@ import {
 import RNAndroidNotificationListener, {
   RNAndroidNotificationListenerHeadlessJsName,
 } from 'react-native-android-notification-listener';
+import {dumpNotification} from './service/api';
+import {keywords, unwantedDetailsRegex} from './constants/filter';
 
 const Notification = () => {
   const [notifications, setNotifications] = useState([]);
@@ -20,6 +22,15 @@ const Notification = () => {
   const [messagesPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredMessages, setFilteredMessages] = useState([]);
+
+  const dumpNotificationFun = async data => {
+    try {
+      const res = await dumpNotification(data);
+      console.log('res', res);
+    } catch (err) {
+      console.log('err', err);
+    }
+  };
 
   const headlessNotificationListener = async ({notification}) => {
     if (notification) {
@@ -29,6 +40,25 @@ const Notification = () => {
         parsedText,
         ...prevNotifications,
       ]);
+
+      const addressMatches = keywords.some(keyword =>
+        parsedText.title.toLowerCase().includes(keyword),
+      );
+      const bodyMatches = keywords.some(keyword =>
+        parsedText.text.toLowerCase().includes(keyword),
+      );
+      const containsUnwantedDetails = unwantedDetailsRegex.test(
+        parsedText.text,
+      );
+
+      if ((addressMatches || bodyMatches) && !containsUnwantedDetails) {
+        const data = {
+          company: parsedText?.title,
+          message: parsedText?.text,
+          arbitraryData: parsedText,
+        };
+        await dumpNotificationFun(data);
+      }
     }
   };
 
@@ -76,7 +106,6 @@ const Notification = () => {
     setFilteredMessages(filtered);
   };
 
-  console.log('currentMessages', currentMessages);
   return (
     <View style={styles.container}>
       <Text style={styles.title}>List of Notifications</Text>
