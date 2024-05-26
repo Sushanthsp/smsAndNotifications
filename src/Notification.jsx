@@ -4,87 +4,24 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  AppRegistry,
   TouchableOpacity,
   TextInput,
   Alert,
-  AppState,
+  ActivityIndicator,
 } from 'react-native';
-import RNAndroidNotificationListener, {
-  RNAndroidNotificationListenerHeadlessJsName,
-} from 'react-native-android-notification-listener';
-import {dumpNotification} from './service/api';
-import {keywords, unwantedDetailsRegex} from './constants/filter';
 
-const Notification = () => {
-  const [notifications, setNotifications] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [messagesPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredMessages, setFilteredMessages] = useState([]);
-
-  const dumpNotificationFun = async data => {
-    try {
-      const res = await dumpNotification(data);
-      console.log('res', res);
-    } catch (err) {
-      console.log('err', err);
-    }
-  };
-
-  const headlessNotificationListener = async ({notification}) => {
-    if (notification) {
-      const parsedText = JSON.parse(notification);
-      setNotifications(prevNotifications => [parsedText, ...prevNotifications]);
-      setFilteredMessages(prevNotifications => [
-        parsedText,
-        ...prevNotifications,
-      ]);
-
-      const addressMatches = keywords.some(keyword =>
-        parsedText.title.toLowerCase().includes(keyword),
-      );
-      const bodyMatches = keywords.some(keyword =>
-        parsedText.text.toLowerCase().includes(keyword),
-      );
-      const containsUnwantedDetails = unwantedDetailsRegex.test(
-        parsedText.text,
-      );
-
-      if ((addressMatches || bodyMatches) && !containsUnwantedDetails) {
-        const data = {
-          company: parsedText?.title,
-          message: parsedText?.text,
-          arbitraryData: parsedText,
-        };
-        await dumpNotificationFun(data);
-      }
-    }
-  };
-
-  // Register the headless task for notification listener
-  AppRegistry.registerHeadlessTask(
-    RNAndroidNotificationListenerHeadlessJsName,
-    () => headlessNotificationListener,
-  );
-
-  // Check if the user has permission for notification listener
-  const checkPermission = async () => {
-    try {
-      const status = await RNAndroidNotificationListener.getPermissionStatus();
-      console.log('Permission status:', status); // Result can be 'authorized', 'denied', or 'unknown'
-
-      // If permission is not granted, request permission
-      if (status === 'unknown' || status === 'denied') {
-        RNAndroidNotificationListener.requestPermission();
-      }
-    } catch (error) {
-      console.error('Error checking permission status:', error);
-    }
-  };
-
-  checkPermission();
-
+const Notification = ({
+  currentPage,
+  messagesPerPage,
+  filteredMessages,
+  loading,
+  handleSearch,
+  searchTerm,
+  toggleLoading,
+  toggleDump,
+  setCurrentPage,
+  notifications,
+}) => {
   // Calculate index of the last message to be displayed on the current page
   const indexOfLastMessage = currentPage * messagesPerPage;
   // Calculate index of the first message to be displayed on the current page
@@ -95,58 +32,84 @@ const Notification = () => {
     indexOfLastMessage,
   );
 
-  const handleSearch = text => {
-    setSearchTerm(text);
-    const filtered = notifications.filter(
-      message =>
-        message?.text.toLowerCase()?.includes(text.toLowerCase()) ||
-        message?.body.toLowerCase()?.includes(text.toLowerCase()) ||
-        message?.title?.toLowerCase().includes(text.toLowerCase()),
-    );
-    setFilteredMessages(filtered);
-  };
-
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>List of Notifications</Text>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search"
-        onChangeText={handleSearch}
-        value={searchTerm}
-      />
-      <ScrollView style={styles.messageContainer}>
-        {currentMessages.map((message, index) => (
-          <View key={index} style={styles.message}>
-            <Text style={styles.messageDate}>
-              {new Date(Number(message.time)).toString()}
-            </Text>
-            <Text style={styles.messageAddress}>{message?.title}</Text>
-            <Text style={styles.messageText}>{message?.text}</Text>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>
+            Your data is being pushed to the database. Please do not close the
+            app.
+          </Text>
+          <ActivityIndicator size="large" color="#007bff" />
+        </View>
+      ) : (
+        <>
+          <Text style={styles.title}>List of Notifications</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search"
+            onChangeText={handleSearch}
+            value={searchTerm}
+          />
+          <ScrollView style={styles.messageContainer}>
+            {currentMessages.map((message, index) => (
+              <View key={index} style={styles.message}>
+                <Text style={styles.messageDate}>
+                  {new Date(Number(message.time)).toString()}
+                </Text>
+                <Text style={styles.messageAddress}>{message?.title}</Text>
+                <Text style={styles.messageText}>{message?.text}</Text>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 'bold',
+                    color: message.read ? 'blue' : 'red',
+                  }}>
+                  {message.read ? 'Read' : 'Unread'}
+                </Text>
+                {toggleLoading === message?.time ? (
+                  <ActivityIndicator size="small" color="#0000ff" />
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      message.read
+                        ? styles.unarchiveButton
+                        : styles.archiveButton,
+                    ]}
+                    onPress={() => toggleDump(message)}>
+                    <Text style={styles.buttonText}>
+                      {message.read ? 'Unarchive' : 'Archive'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+          <View style={styles.pagination}>
+            <TouchableOpacity
+              style={[
+                styles.pageButton,
+                currentPage === 1 && styles.disabledButton,
+              ]}
+              onPress={() => setCurrentPage(currentPage - 1)}
+              disabled={currentPage === 1}>
+              <Text style={styles.buttonText}>Previous</Text>
+            </TouchableOpacity>
+            <Text style={styles.pageText}>Page {currentPage}</Text>
+            <TouchableOpacity
+              style={[
+                styles.pageButton,
+                indexOfLastMessage >= notifications.length &&
+                  styles.disabledButton,
+              ]}
+              onPress={() => setCurrentPage(currentPage + 1)}
+              disabled={indexOfLastMessage >= notifications.length}>
+              <Text style={styles.buttonText}>Next</Text>
+            </TouchableOpacity>
           </View>
-        ))}
-      </ScrollView>
-      <View style={styles.pagination}>
-        <TouchableOpacity
-          style={[
-            styles.pageButton,
-            currentPage === 1 && styles.disabledButton,
-          ]}
-          onPress={() => setCurrentPage(currentPage - 1)}
-          disabled={currentPage === 1}>
-          <Text style={styles.buttonText}>Previous</Text>
-        </TouchableOpacity>
-        <Text style={styles.pageText}>Page {currentPage}</Text>
-        <TouchableOpacity
-          style={[
-            styles.pageButton,
-            indexOfLastMessage >= notifications.length && styles.disabledButton,
-          ]}
-          onPress={() => setCurrentPage(currentPage + 1)}
-          disabled={indexOfLastMessage >= notifications.length}>
-          <Text style={styles.buttonText}>Next</Text>
-        </TouchableOpacity>
-      </View>
+        </>
+      )}
     </View>
   );
 };
@@ -160,8 +123,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 15,
     marginBottom: 20,
     color: '#333',
   },
@@ -207,6 +169,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  button: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#007bff',
+    borderRadius: 5,
+  },
+  archiveButton: {
+    backgroundColor: '#28a745',
+  },
+  unarchiveButton: {
+    backgroundColor: '#dc3545',
+  },
+  buttonText: {
+    color: '#fff',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
   pageText: {
     fontSize: 18,
     color: '#333',
@@ -218,12 +197,30 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
   },
-  buttonText: {
-    fontSize: 16,
-    color: '#fff',
+  mt: {
+    marginTop: 5,
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  progressBarContainer: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBar: {
+    flex: 1,
+    marginRight: 10,
   },
 });
 

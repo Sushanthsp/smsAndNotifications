@@ -10,287 +10,146 @@ import {
   AppState,
   PermissionsAndroid,
   DeviceEventEmitter,
+  ActivityIndicator,
+  AppRegistry,
 } from 'react-native';
-import SmsAndroid from 'react-native-get-sms-android';
-import {check, PERMISSIONS, request} from 'react-native-permissions';
-import BackgroundService from 'react-native-background-actions';
-import SmsListener from 'react-native-android-sms-listener';
-import {dumpSms} from './service/api';
-import {keywords, unwantedDetailsRegex} from './constants/filter';
+
+import {ProgressBar} from '@react-native-community/progress-bar-android';
+import Icon from 'react-native-vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const sleep = time => new Promise(resolve => setTimeout(() => resolve(), time));
-
-const veryIntensiveTask = async taskDataArguments => {
-  const {delay} = taskDataArguments;
-  for (let i = 0; BackgroundService.isRunning(); i++) {
-    await BackgroundService.updateNotification({
-      taskDesc: 'task running ' + i,
-    });
-
-    await sleep(delay);
-  }
-};
-
-const options = {
-  taskName: 'Example',
-  taskTitle: 'ExampleTask title',
-  taskDesc: 'ExampleTask description',
-  taskIcon: {
-    name: 'ic_launcher',
-    type: 'mipmap',
-  },
-  color: '#ff00ff',
-  parameters: {
-    delay: 2000,
-  },
-};
-
-const startBackgroundService = async () => {
-  await BackgroundService.start(veryIntensiveTask, options);
-};
-
-const stopBackgroundService = async () => {
-  await BackgroundService.stop();
-};
-
-const SMSList = () => {
-  const [messages, setMessages] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [messagesPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredMessages, setFilteredMessages] = useState([]);
-
-  const requestSMSPermissions = async () => {
-    try {
-      const readSMSPermissionStatus = await check(PERMISSIONS.ANDROID.READ_SMS);
-      const writeSMSPermissionStatus = await check(
-        PERMISSIONS.ANDROID.WRITE_SMS,
-      );
-
-      if (readSMSPermissionStatus !== 'granted') {
-        const readPermissionRequestResult = await request(
-          PERMISSIONS.ANDROID.READ_SMS,
-        );
-        if (readPermissionRequestResult !== 'granted') {
-          console.log('Read SMS permission not granted');
-        }
-      }
-
-      if (writeSMSPermissionStatus !== 'granted') {
-        const writePermissionRequestResult = await request(
-          PERMISSIONS.ANDROID.WRITE_SMS,
-        );
-        if (writePermissionRequestResult !== 'granted') {
-          console.log('Write SMS permission not granted');
-        }
-      }
-    } catch (error) {
-      console.error('Permission request error:', error);
-    }
-  };
-
-  useEffect(() => {
-    const fetchAllSMS = async () => {
-      try {
-        await requestSMSPermissions();
-
-        SmsAndroid.list(
-          JSON.stringify({}),
-          fail => {
-            console.log('Failed with this error: ' + fail);
-          },
-          (count, smsList) => {
-            const parsedMessages = JSON.parse(smsList);
-            setMessages(parsedMessages);
-            setFilteredMessages(parsedMessages);
-          },
-        );
-      } catch (error) {
-        console.error('Error fetching SMS:', error);
-      }
-    };
-
-    fetchAllSMS();
-  }, []);
-
-  const requestSmsPermission = async () => {
-    try {
-      await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
-      );
-    } catch (err) {
-      console.log(err);
-    }
-  };
-
-  useEffect(() => {
-    requestSmsPermission();
-    SmsListener.addListener(async message => {
-      console.info('message----->', message);
-
-      const addressMatches = keywords.some(keyword =>
-        message.originatingAddress.toLowerCase().includes(keyword),
-      );
-      const bodyMatches = keywords.some(keyword =>
-        message.body.toLowerCase().includes(keyword),
-      );
-      const containsUnwantedDetails = unwantedDetailsRegex.test(message.body);
-
-      if ((addressMatches || bodyMatches) && !containsUnwantedDetails) {
-        const data = {
-          company: message?.address + ' - ' + message?.service_center,
-          message: message?.body,
-          arbitraryData: message,
-        };
-        await dumpSmsFun(data);
-      }
-    });
-  }, []);
-
-  const handleSearch = text => {
-    setSearchTerm(text);
-    const filtered = messages.filter(
-      message =>
-        message?.address.toLowerCase()?.includes(text.toLowerCase()) ||
-        message?.body.toLowerCase()?.includes(text.toLowerCase()) ||
-        message?.serviceCenter?.toLowerCase().includes(text.toLowerCase()),
-    );
-    setFilteredMessages(filtered);
-  };
-
+const SMSList = ({
+  currentPage,
+  messagesPerPage,
+  filteredMessages,
+  loading,
+  progress,
+  handleSearch,
+  searchTerm,
+  toggleLoading,
+  toggleDump,
+  messages,
+  setCurrentPage,
+  setReadSms,
+  readSms,
+}) => {
   const indexOfLastMessage = currentPage * messagesPerPage;
   const indexOfFirstMessage = indexOfLastMessage - messagesPerPage;
   const currentMessages = filteredMessages.slice(
     indexOfFirstMessage,
     indexOfLastMessage,
   );
+  const [pressed, setPressed] = useState(false);
 
-  const [taskActive, setTaskActive] = useState(false);
-  const toggleTask = () => {
-    if (taskActive) {
-      stopBackgroundService();
-    } else {
-      startBackgroundService();
-    }
-    setTaskActive(!taskActive);
-  };
-
-  // useEffect(() => {
-  //   const handleAppStateChange = nextAppState => {
-  //     console.log('nextAppState', nextAppState);
-  //     if (nextAppState === 'background') {
-  //       startBackgroundService();
-  //     } else if (nextAppState === 'active') {
-  //       stopBackgroundService();
-  //     }
-  //   };
-
-  //   const subscribeToAppStateChanges = () => {
-  //     AppState.addEventListener('change', handleAppStateChange);
-  //   };
-
-  //   subscribeToAppStateChanges();
-
-  //   return () => {
-  //     subscribeToAppStateChanges();
-  //   };
-  // }, []);
-
-  const dumpSmsFun = async data => {
-    try {
-      const res = await dumpSms(data);
-      console.log('res', res);
-    } catch (err) {
-      console.log('err', err);
-    }
-  };
-
-  const pushData = async () => {
-    try {
-      let pushedData = await AsyncStorage.getItem('pushedData');
-
-      if (!pushedData) {
-        const filteredMessages = messages.filter(message => {
-          const addressMatches = keywords.some(keyword =>
-            message.address.toLowerCase().includes(keyword),
-          );
-          const bodyMatches = keywords.some(keyword =>
-            message.body.toLowerCase().includes(keyword),
-          );
-          const containsUnwantedDetails = unwantedDetailsRegex.test(
-            message.body,
-          );
-
-          return (addressMatches || bodyMatches) && !containsUnwantedDetails;
-        });
-
-        for (const message of filteredMessages) {
-          const data = {
-            company: message?.address + ' - ' + message?.service_center,
-            message: message?.body,
-            arbitraryData: message,
-          };
-          await dumpSmsFun(data);
-        }
-        await AsyncStorage.setItem('pushedData', 'true');
-      }
-    } catch (error) {
-      console.error('Error fetching or filtering messages:', error);
-    }
-  };
+  // Check if 'pushedData' is in AsyncStorage
   useEffect(() => {
-    if (messages?.length > 0) {
-      pushData();
-    }
-  }, [messages]);
+    const checkPushedData = async () => {
+      const pushedData = await AsyncStorage.getItem('pushedData');
+      setPressed(pushedData === 'true');
+    };
+
+    checkPushedData();
+  }, []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>List of SMS Messages</Text>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search"
-        onChangeText={handleSearch}
-        value={searchTerm}
-      />
-      <ScrollView style={styles.messageContainer}>
-        {currentMessages.map((message, index) => (
-          <View key={index} style={styles.message}>
-            <Text style={styles.messageDate}>
-              {new Date(message.date).toString()}
-            </Text>
-            <Text style={styles.messageAddress}>{message.address}</Text>
-            <Text style={styles.messageText}>{message.body}</Text>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>
+            Your data is being pushed to the database. Please do not close the
+            app.
+          </Text>
+          <View style={styles.progressBarContainer}>
+            <View style={styles.progressBar}>
+              <ProgressBar
+                styleAttr="Horizontal"
+                indeterminate={false}
+                progress={progress}
+                color="#007bff"
+              />
+              <ActivityIndicator size="large" color="#007bff" />
+            </View>
           </View>
-        ))}
-      </ScrollView>
-      <View style={styles.pagination}>
-        <TouchableOpacity
-          style={[
-            styles.pageButton,
-            currentPage === 1 && styles.disabledButton,
-          ]}
-          onPress={() => setCurrentPage(currentPage - 1)}
-          disabled={currentPage === 1}>
-          <Text style={styles.buttonText}>Previous</Text>
-        </TouchableOpacity>
-        <Text style={styles.pageText}>Page {currentPage}</Text>
-        <TouchableOpacity
-          style={[
-            styles.pageButton,
-            indexOfLastMessage >= messages.length && styles.disabledButton,
-          ]}
-          onPress={() => setCurrentPage(currentPage + 1)}
-          disabled={indexOfLastMessage >= messages.length}>
-          <Text style={styles.buttonText}>Next</Text>
-        </TouchableOpacity>
-      </View>
-      {/* <View style={styles.mt}>
-        <TouchableOpacity style={[styles.pageButton]} onPress={toggleTask}>
-          <Text style={styles.buttonText}>Toggle task</Text>
-        </TouchableOpacity>
-      </View> */}
+        </View>
+      ) : (
+        <>
+          <Text style={styles.title}>List of SMS Messages</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search"
+            onChangeText={handleSearch}
+            value={searchTerm}
+          />
+
+          <ScrollView style={styles.messageContainer}>
+            {currentMessages.map((message, index) => (
+              <View key={index} style={styles.message}>
+                <Text style={styles.messageDate}>
+                  {new Date(message.date).toString()}
+                </Text>
+                <Text style={styles.messageAddress}>{message.address}</Text>
+                <Text style={styles.messageText}>{message.body}</Text>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 'bold',
+                    color: message.read ? 'blue' : 'red',
+                  }}>
+                  {message.read ? 'Read' : 'Unread'}
+                </Text>
+                {toggleLoading === message?.date ? (
+                  <ActivityIndicator size="small" color="#0000ff" />
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      message.read
+                        ? styles.unarchiveButton
+                        : styles.archiveButton,
+                    ]}
+                    onPress={() => toggleDump(message)}>
+                    <Text style={styles.buttonText}>
+                      {message.read ? 'Unarchive' : 'Archive'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+          <View style={styles.pagination}>
+            <TouchableOpacity
+              style={[
+                styles.pageButton,
+                currentPage === 1 && styles.disabledButton,
+              ]}
+              onPress={() => setCurrentPage(currentPage - 1)}
+              disabled={currentPage === 1}>
+              <Text style={styles.buttonText}>Previous</Text>
+            </TouchableOpacity>
+            <Text style={styles.pageText}>Page {currentPage}</Text>
+            <TouchableOpacity
+              style={[
+                styles.pageButton,
+                indexOfLastMessage >= messages.length && styles.disabledButton,
+              ]}
+              onPress={() => setCurrentPage(currentPage + 1)}
+              disabled={indexOfLastMessage >= messages.length}>
+              <Text style={styles.buttonText}>Next</Text>
+            </TouchableOpacity>
+
+            {(!pressed) && (
+              <TouchableOpacity
+                style={styles.stopIcon}
+                onPress={async () => {
+                  await AsyncStorage.setItem('pushedData', 'true');
+                  setPressed(true);
+                }}>
+                <Icon name="power-off" size={30} color="red" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </>
+      )}
     </View>
   );
 };
@@ -304,8 +163,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 15,
     marginBottom: 20,
     color: '#333',
   },
@@ -351,6 +209,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  button: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#007bff',
+    borderRadius: 5,
+  },
+  archiveButton: {
+    backgroundColor: '#28a745',
+  },
+  unarchiveButton: {
+    backgroundColor: '#dc3545',
+  },
+  buttonText: {
+    color: '#fff',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
   pageText: {
     fontSize: 18,
     color: '#333',
@@ -362,15 +237,36 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
   },
-  buttonText: {
-    fontSize: 16,
-    color: '#fff',
-  },
   mt: {
     marginTop: 5,
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  progressBarContainer: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBar: {
+    flex: 1,
+    marginRight: 10,
+  },
+  stopIcon: {
+    marginLeft: 10,
+  },
+  powerIcon: {
+    marginTop: 10,
   },
 });
 
