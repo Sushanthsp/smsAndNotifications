@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   AppRegistry,
   Linking,
+  BackHandler,
 } from 'react-native';
 import SMSList from './src/Sms';
 import Notification from './src/Notification';
@@ -33,15 +34,6 @@ import SmsListener from 'react-native-android-sms-listener';
 import {deleteSms, dumpSms} from './src/service/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
-
-// const listenNotification = async ({notification}) => {
-//   console.log('notification------>', notification);
-// };
-
-// AppRegistry.registerHeadlessTask(
-//   RNAndroidNotificationListenerHeadlessJsName,
-//   () => listenNotification,
-// );
 
 function App() {
   const removeToken = async res => {
@@ -381,40 +373,11 @@ function App() {
   const [toggleNotificationLoading, setNotificationToggleLoading] =
     useState('');
 
-  useEffect(() => {
-    checkPermission();
-  }, []);
-
   const openNotificationSettings = () => {
     Linking.openSettings().catch(err => {
       console.error('Error opening settings:', err);
       Alert.alert('Error', 'Unable to open settings.');
     });
-  };
-
-  const checkPermission = async () => {
-    try {
-      const status = await RNAndroidNotificationListener.getPermissionStatus();
-      console.log('Permission status:', status);
-      if (status === 'authorized') {
-        Alert.alert(
-          'Permission Trigger Required',
-          'To continue listening to notification, please disable and then re-enable notification access permission for this app.',
-          [
-            {text: 'Cancel', style: 'cancel'},
-            {
-              text: 'Open Settings',
-              onPress: () => RNAndroidNotificationListener.requestPermission(),
-            },
-          ],
-          {cancelable: false},
-        );
-      } else if (status === 'unknown' || status === 'denied') {
-        RNAndroidNotificationListener.requestPermission();
-      }
-    } catch (error) {
-      console.error('Error checking permission status:', error);
-    }
   };
 
   const dumpNotificationFun = async data => {
@@ -445,8 +408,7 @@ function App() {
   };
 
   const cleanCompany = company => {
-    // Check if the company string exactly matches any unwanted company
-    const pattern = new RegExp(unwantedCompanies.join('|'), 'gi');
+    const pattern = new RegExp(`\\b(${unwantedCompanies.join('|')})\\b`, 'gi');
 
     // Remove unwanted substrings from the company string
     const cleaned = company
@@ -524,7 +486,50 @@ function App() {
     }
   };
 
-  // Register the headless task for notification listener
+  //   const checkPermission = async () => {
+  //     try {
+  //       const status = await RNAndroidNotificationListener.getPermissionStatus();
+  //       console.log('Permission status:', status);
+  //       if (status === 'authorized') {
+  //         Alert.alert(
+  //           'Permission Trigger Required',
+  //           'To continue listening to notification, please disable and then re-enable notification access permission for this app.',
+  //           [
+  //             {text: 'Cancel', style: 'cancel'},
+  //             {
+  //               text: 'Open Settings',
+  //               onPress: () => RNAndroidNotificationListener.requestPermission(),
+  //             },
+  //           ],
+  //           {cancelable: false},
+  //         );
+  //       } else if (status === 'unknown' || status === 'denied') {
+  //         RNAndroidNotificationListener.requestPermission();
+  //       }
+  //     } catch (error) {
+  //       console.error('Error checking permission status:', error);
+  //     }
+  //   };
+
+  const checkPermission = async () => {
+    try {
+      const status = await RNAndroidNotificationListener.getPermissionStatus();
+      console.log('Permission status:', status);
+      if (status === 'unknown' || status === 'denied') {
+        RNAndroidNotificationListener.requestPermission();
+      }
+    } catch (error) {
+      console.error('Error checking permission status:', error);
+    }
+  };
+  useEffect(() => {
+    checkPermission();
+  }, []);
+
+  //   const headlessNotificationListener = async ({notification}) => {
+  //     console.log('notification------>', notification);
+  //   };
+
   AppRegistry.registerHeadlessTask(
     RNAndroidNotificationListenerHeadlessJsName,
     () => headlessNotificationListener,
@@ -548,6 +553,10 @@ function App() {
       if (message?.read) {
         const appMatch = cleanCompany(message?.app);
 
+        console.log(
+          'appMatch ? appMatch : message?.title',
+          appMatch ? appMatch : message?.title,
+        );
         const res = await deleteNotification({
           company: appMatch ? appMatch : message?.title,
           dateSent: new Date(Number(message?.time)),
@@ -598,6 +607,57 @@ function App() {
       setNotificationToggleLoading('');
     }
   };
+
+  //app notification
+  const [appState, setAppState] = useState(AppState.currentState);
+
+  useEffect(() => {
+    const handleAppStateChange = nextAppState => {
+      console.log('nextAppState', nextAppState);
+      if (appState.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('App has come to the foreground!');
+      } else if (nextAppState === 'background') {
+        console.log('App has gone to the background!');
+        // Here you can schedule a notification
+      }
+
+      setAppState(nextAppState);
+    };
+
+    const subscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [appState]);
+
+  useEffect(() => {
+    const backAction = () => {
+      Alert.alert(
+        'Hold on!',
+        'Are you sure you want to close the App, this will stop listening to notifications?',
+        [
+          {
+            text: 'Cancel',
+            onPress: () => null,
+            style: 'cancel',
+          },
+          {text: 'YES', onPress: () => BackHandler.exitApp()},
+        ],
+      );
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction,
+    );
+
+    return () => backHandler.remove();
+  }, []);
 
   return (
     <View style={styles.container}>

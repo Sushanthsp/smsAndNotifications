@@ -56,4 +56,4 @@ export const unwantedCompanies = [
 export const unwantedDetailsRegex =
   /(otp|transaction|payment|account|statement|balance|credited|debited|purchase|order|code|verification|charged|password|pin|ssn|dob|credit card|cvv|expiry|address|security|id|personal|confidential|secret|passport|license|security code|secret code|private|consumed|validity|fund|debit|credit|fund|balance|cdsl|investor|hotspot|messages is doing work in the background|usb debugging connected|tethering or hotspot active|1 device(s) connected|no devices connected|incoming|spam|blocked|call|salary|screenshot|alert|battery|draining|message|background|battery|hotspot|device)/i;
 
-export const unwantedApps = /(whats)/i;
+export const unwantedApps = /(whats|contacts|Wi-Fi)/i;
