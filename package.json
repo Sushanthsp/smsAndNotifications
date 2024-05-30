@@ -19,6 +19,7 @@
     "react-native-android-notification-listener": "^5.0.1",
     "react-native-android-sms-listener": "^0.8.0",
     "react-native-background-actions": "^3.0.1",
+    "react-native-device-info": "^11.1.0",
     "react-native-get-sms-android": "^2.1.0",
     "react-native-permissions": "^4.1.5",
     "react-native-push-notification": "^8.1.1",

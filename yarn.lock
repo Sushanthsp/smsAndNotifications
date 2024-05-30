@@ -8155,6 +8155,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-native-device-info@npm:^11.1.0":
+  version: 11.1.0
+  resolution: "react-native-device-info@npm:11.1.0"
+  peerDependencies:
+    react-native: "*"
+  checksum: 272cab82573933a1f3a9bc394b82a387ccbdf9fbef131fc1f04b8ff78b36f581931b5c643f5aa278f28577cbc320ef2ac588cafdb73292e9b0cf4427d54c44ce
+  languageName: node
+  linkType: hard
+
 "react-native-get-sms-android@npm:^2.1.0":
   version: 2.1.0
   resolution: "react-native-get-sms-android@npm:2.1.0"
@@ -8896,6 +8905,7 @@ __metadata:
     react-native-android-notification-listener: ^5.0.1
     react-native-android-sms-listener: ^0.8.0
     react-native-background-actions: ^3.0.1
+    react-native-device-info: ^11.1.0
     react-native-get-sms-android: ^2.1.0
     react-native-permissions: ^4.1.5
     react-native-push-notification: ^8.1.1

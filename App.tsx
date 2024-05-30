@@ -3,16 +3,10 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
-  TextInput,
   Alert,
   AppState,
-  PermissionsAndroid,
-  DeviceEventEmitter,
-  ActivityIndicator,
   AppRegistry,
-  Linking,
   BackHandler,
 } from 'react-native';
 import SMSList from './src/Sms';
@@ -34,6 +28,163 @@ import SmsListener from 'react-native-android-sms-listener';
 import {deleteSms, dumpSms} from './src/service/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
+import DeviceInfo from 'react-native-device-info';
+
+const appUniqueId = DeviceInfo.getAndroidId()?._j;
+
+console.log('appUniqueId', appUniqueId);
+const sleep = time => new Promise(resolve => setTimeout(resolve, time));
+
+const dumpNotificationFun = async data => {
+  try {
+    console.log('data----->', data);
+    const res = await dumpNotification(data);
+    console.log('res', res);
+    return res;
+  } catch (err) {
+    console.log('err', err);
+  } finally {
+  }
+};
+
+const headlessNotificationListener = async ({notification}) => {
+  console.log(
+    'notification------>',
+    JSON.parse(notification)?.app,
+    ' ',
+    JSON.parse(notification)?.time,
+  );
+
+  if (notification) {
+    const parsedText = JSON.parse(notification);
+
+    const appMatch = cleanCompany(parsedText?.app);
+
+    const containsUnwantedDetails = unwantedDetailsRegex.test(
+      parsedText.text.toLowerCase(),
+    );
+
+    const containsUnwantedAppS = unwantedApps.test(
+      parsedText.app.toLowerCase(),
+    );
+
+    console.log(
+      '!containsUnwantedDetails && !containsUnwantedAppS && appMatch',
+      !containsUnwantedDetails && !containsUnwantedAppS && appMatch,
+    );
+
+    if (!containsUnwantedDetails && !containsUnwantedAppS && appMatch) {
+      const company = appMatch ? appMatch : parsedText?.title;
+      let dateSent;
+      try {
+        if (parsedText?.time && !isNaN(Date.parse(parsedText.time))) {
+          dateSent = new Date(parsedText.time).toISOString();
+        } else {
+          // Handle invalid date scenario
+          console.error('Invalid date format:', parsedText?.time);
+          dateSent = new Date().toISOString(); // Fallback to current date/time
+        }
+      } catch (err) {
+        console.log('Err', err);
+      }
+
+      const savedNotifications =
+        JSON.parse(await AsyncStorage.getItem('notifications')) || [];
+
+      console.log('savedNotifications', savedNotifications);
+      const isDuplicate = savedNotifications.some(
+        savedNotification =>
+          savedNotification.company === company &&
+          savedNotification.dateSent === dateSent,
+      );
+      console.log('duplicate', isDuplicate);
+      if (!isDuplicate) {
+        const data = {
+          company,
+          message: parsedText?.text,
+          arbitraryData: parsedText,
+          dateSent,
+          appUniqueId,
+        };
+
+        const res = await dumpNotificationFun(data);
+        if (res?.status) {
+          console.log('dumped');
+
+          savedNotifications.push({company, dateSent});
+          await AsyncStorage.setItem(
+            'notifications',
+            JSON.stringify(savedNotifications),
+          );
+        }
+      } else {
+        console.log('Notification already processed, ignoring.');
+      }
+    }
+  }
+};
+
+// Define the intensive task
+const task = async taskDataArguments => {
+  const {delay} = taskDataArguments;
+  await new Promise(async resolve => {
+    let i = 0;
+    while (BackgroundService.isRunning()) {
+      console.log('Running background task');
+      AppRegistry.registerHeadlessTask(
+        RNAndroidNotificationListenerHeadlessJsName,
+        () => headlessNotificationListener,
+      );
+      // Check for new notifications here, for example, fetch from an API
+      await fetchNewNotifications(i);
+      i++;
+      await sleep(delay);
+    }
+    resolve();
+  });
+};
+
+const options = {
+  taskName: 'NotificationTask',
+  taskTitle: 'Notification Service',
+  taskDesc: 'Fetching notifications in the background',
+  taskIcon: {
+    name: 'ic_launcher',
+    type: 'mipmap',
+  },
+  color: '#ff00ff',
+  linkingURI: 'yourSchemeHere://chat/jane',
+  parameters: {
+    delay: 100000,
+  },
+};
+
+const fetchNewNotifications = async i => {
+  await BackgroundService.updateNotification({
+    taskDesc: 'Checking for new notifications',
+  });
+};
+
+const cleanCompany = company => {
+  const pattern = new RegExp(`\\b(${unwantedCompanies.join('|')})\\b`, 'gi');
+
+  // Remove unwanted substrings from the company string
+  const cleaned = company
+    .replace(pattern, '')
+    .replace(/(^\.|\.$)/g, '')
+    .trim();
+
+  // Split the remaining string into parts by periods
+  const parts = cleaned.split('.').filter(part => part);
+
+  // If nothing remains or it matches an unwanted company, return an empty string
+  if (!cleaned || parts.length === 0 || unwantedCompanies.includes(cleaned)) {
+    return '';
+  }
+
+  // Reconstruct the string to the format "before.x.y"
+  return parts.join('.');
+};
 
 function App() {
   const removeToken = async res => {
@@ -211,24 +362,6 @@ function App() {
 
   const [readSms, setReadSms] = useState(false);
 
-  // useEffect(() => {
-  //   const checkPushedData = async () => {
-  //     try {
-  //       const pushedData = await AsyncStorage.getItem('pushedData');
-  //       if (pushedData) {
-  //         setReadSms(false);
-  //       } else {
-  //         setReadSms(true);
-  //       }
-  //     } catch (error) {
-  //       console.error('Failed to fetch pushedData from AsyncStorage', error);
-  //       setReadSms(false);
-  //     }
-  //   };
-
-  //   checkPushedData();
-  // }, []);
-
   const pushData = async () => {
     try {
       const pushedData = await AsyncStorage.getItem('pushedData');
@@ -305,6 +438,7 @@ function App() {
   }, [messages]);
 
   const [toggleLoading, setToggleLoading] = useState('');
+
   const toggleDump = async message => {
     if (toggleLoading) return;
     try {
@@ -373,27 +507,6 @@ function App() {
   const [toggleNotificationLoading, setNotificationToggleLoading] =
     useState('');
 
-  const openNotificationSettings = () => {
-    Linking.openSettings().catch(err => {
-      console.error('Error opening settings:', err);
-      Alert.alert('Error', 'Unable to open settings.');
-    });
-  };
-
-  const dumpNotificationFun = async data => {
-    try {
-      console.log('data----->', data);
-      setNotificationLoading(true);
-      const res = await dumpNotification(data);
-      console.log('res', res);
-      return res;
-    } catch (err) {
-      console.log('err', err);
-    } finally {
-      setNotificationLoading(false);
-    }
-  };
-
   const dumpNotificationFun2 = async data => {
     try {
       console.log('data----->', data);
@@ -406,110 +519,6 @@ function App() {
       setNotificationToggleLoading(false);
     }
   };
-
-  const cleanCompany = company => {
-    const pattern = new RegExp(`\\b(${unwantedCompanies.join('|')})\\b`, 'gi');
-
-    // Remove unwanted substrings from the company string
-    const cleaned = company
-      .replace(pattern, '')
-      .replace(/(^\.|\.$)/g, '')
-      .trim();
-
-    // Split the remaining string into parts by periods
-    const parts = cleaned.split('.').filter(part => part);
-
-    // If nothing remains or it matches an unwanted company, return an empty string
-    if (!cleaned || parts.length === 0 || unwantedCompanies.includes(cleaned)) {
-      return '';
-    }
-
-    // Reconstruct the string to the format "before.x.y"
-    return parts.join('.');
-  };
-
-  const headlessNotificationListener = async ({notification}) => {
-    console.log('notification------>', notification);
-    if (notification) {
-      const parsedText = JSON.parse(notification);
-      const notificationWithReadFlag = {
-        ...parsedText,
-        read: false, // Set initial read flag to false
-      };
-
-      setNotifications(prevNotifications => [
-        notificationWithReadFlag,
-        ...prevNotifications,
-      ]);
-      setFilteredNotificationMessages(prevNotifications => [
-        notificationWithReadFlag,
-        ...prevNotifications,
-      ]);
-
-      const appMatch = cleanCompany(notificationWithReadFlag?.app);
-
-      const containsUnwantedDetails = unwantedDetailsRegex.test(
-        notificationWithReadFlag.text.toLowerCase(),
-      );
-
-      const containsUnwantedAppS = unwantedApps.test(
-        notificationWithReadFlag.app.toLowerCase(),
-      );
-
-      if (!containsUnwantedDetails && !containsUnwantedAppS && appMatch) {
-        const data = {
-          company: appMatch ? appMatch : notificationWithReadFlag?.title,
-          message: notificationWithReadFlag?.text,
-          arbitraryData: notificationWithReadFlag,
-          dateSent: new Date(notificationWithReadFlag?.time),
-        };
-
-        const res = await dumpNotificationFun(data);
-        if (res?.status) {
-          notificationWithReadFlag.read = true;
-          setNotifications(prevNotifications =>
-            prevNotifications.map(notification =>
-              notification.time === notificationWithReadFlag.time
-                ? notificationWithReadFlag
-                : notification,
-            ),
-          );
-          setFilteredNotificationMessages(prevNotifications =>
-            prevNotifications.map(notification =>
-              notification.time === notificationWithReadFlag.time
-                ? notificationWithReadFlag
-                : notification,
-            ),
-          );
-        }
-      }
-    }
-  };
-
-  //   const checkPermission = async () => {
-  //     try {
-  //       const status = await RNAndroidNotificationListener.getPermissionStatus();
-  //       console.log('Permission status:', status);
-  //       if (status === 'authorized') {
-  //         Alert.alert(
-  //           'Permission Trigger Required',
-  //           'To continue listening to notification, please disable and then re-enable notification access permission for this app.',
-  //           [
-  //             {text: 'Cancel', style: 'cancel'},
-  //             {
-  //               text: 'Open Settings',
-  //               onPress: () => RNAndroidNotificationListener.requestPermission(),
-  //             },
-  //           ],
-  //           {cancelable: false},
-  //         );
-  //       } else if (status === 'unknown' || status === 'denied') {
-  //         RNAndroidNotificationListener.requestPermission();
-  //       }
-  //     } catch (error) {
-  //       console.error('Error checking permission status:', error);
-  //     }
-  //   };
 
   const checkPermission = async () => {
     try {
@@ -524,23 +533,18 @@ function App() {
   };
   useEffect(() => {
     checkPermission();
+    const startBackgroundService = async () => {
+      await BackgroundService.start(task, options);
+    };
+
+    startBackgroundService();
   }, []);
-
-  //   const headlessNotificationListener = async ({notification}) => {
-  //     console.log('notification------>', notification);
-  //   };
-
-  AppRegistry.registerHeadlessTask(
-    RNAndroidNotificationListenerHeadlessJsName,
-    () => headlessNotificationListener,
-  );
 
   const handleNotificationSearch = text => {
     setSearchNotificationTerm(text);
     const filtered = notifications.filter(
       message =>
         message?.text.toLowerCase()?.includes(text.toLowerCase()) ||
-        message?.body.toLowerCase()?.includes(text.toLowerCase()) ||
         message?.title?.toLowerCase().includes(text.toLowerCase()),
     );
     setFilteredNotificationMessages(filtered);
@@ -584,6 +588,7 @@ function App() {
           message: message?.text,
           arbitraryData: message,
           dateSent: new Date(Number(message?.time)),
+          appUniqueId,
         };
         const res = await dumpNotificationFun2(data);
         if (res?.status) {

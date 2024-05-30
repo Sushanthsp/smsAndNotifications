@@ -1,83 +1,101 @@
 import React, {useEffect} from 'react';
-import {Alert, View, Text} from 'react-native';
-import BackgroundFetch from 'react-native-background-fetch';
-import PushNotification from 'react-native-push-notification';
+import {View, Text, StyleSheet, AppRegistry} from 'react-native';
+import BackgroundService from 'react-native-background-actions';
+import RNAndroidNotificationListener, {
+  RNAndroidNotificationListenerHeadlessJsName,
+} from 'react-native-android-notification-listener';
 
-const App = () => {
-  useEffect(() => {
-    // Configure Background Fetch
-    BackgroundFetch.configure(
-      {
-        minimumFetchInterval: 1,
-        stopOnTerminate: false,
-        startOnBoot: true,
-      },
-      async taskId => {
-        console.log('[BackgroundFetch] taskId: ', taskId);
+const sleep = time => new Promise(resolve => setTimeout(resolve, time));
 
-        // Check for new notifications here, for example, fetch from an API
-        // Assuming you fetch notifications and they are in the variable `newNotifications`
-        const newNotifications = await fetchNewNotifications();
+// Define the intensive task
+const task = async taskDataArguments => {
+  const {delay} = taskDataArguments;
+  await new Promise(async resolve => {
+    let i = 0;
+    while (BackgroundService.isRunning()) {
+      console.log('Running background task');
+      AppRegistry.registerHeadlessTask(
+        RNAndroidNotificationListenerHeadlessJsName,
+        () => headlessNotificationListener,
+      );
+      // Check for new notifications here, for example, fetch from an API
+      await fetchNewNotifications(i);
+      i++;
+      await sleep(delay);
+    }
+    resolve();
+  });
+};
 
-        newNotifications.forEach(notification => {
-          PushNotification.localNotification({
-            title: notification.title,
-            message: notification.message,
-          });
-        });
+const options = {
+  taskName: 'NotificationTask',
+  taskTitle: 'Notification Service',
+  taskDesc: 'Fetching notifications in the background',
+  taskIcon: {
+    name: 'ic_launcher',
+    type: 'mipmap',
+  },
+  color: '#ff00ff',
+  linkingURI: 'yourSchemeHere://chat/jane',
+  parameters: {
+    delay: 100000,
+  },
+};
 
-        BackgroundFetch.finish(taskId);
-      },
-      error => {
-        console.log('[BackgroundFetch] configure error: ', error);
-      },
-    );
+const fetchNewNotifications = async i => {
+  console.log('run task here');
 
-    // Optional: Query the current BackgroundFetch status.
-    BackgroundFetch.status(status => {
-      switch (status) {
-        case BackgroundFetch.STATUS_RESTRICTED:
-          console.log('BackgroundFetch restricted');
-          break;
-        case BackgroundFetch.STATUS_DENIED:
-          console.log('BackgroundFetch denied');
-          break;
-        case BackgroundFetch.STATUS_AVAILABLE:
-          console.log('BackgroundFetch is enabled');
-          break;
+  await BackgroundService.updateNotification({
+    taskDesc: 'Checking for new notifications ' + i,
+  });
+};
+
+const headlessNotificationListener = async ({notification}) => {
+  console.log('notification------>', notification);
+};
+
+function App() {
+  const checkPermission = async () => {
+    try {
+      const status = await RNAndroidNotificationListener.getPermissionStatus();
+      console.log('Permission status:', status);
+      if (status === 'unknown' || status === 'denied') {
+        RNAndroidNotificationListener.requestPermission();
       }
-    });
-
-    // Configure Push Notifications
-    PushNotification.configure({
-      onRegister: function (token) {
-        console.log('TOKEN:', token);
-      },
-      onNotification: function (notification) {
-        console.log('NOTIFICATION:', notification);
-        notification.finish(PushNotificationIOS.FetchResult.NoData);
-      },
-      senderID: 'YOUR GCM (OR FCM) SENDER ID',
-      permissions: {
-        alert: true,
-        badge: true,
-        sound: true,
-      },
-      popInitialNotification: true,
-      requestPermissions: true,
-    });
-  }, []);
-
-  const fetchNewNotifications = async () => {
-    // Your logic to fetch new notifications
-    return [{title: 'New Alert', message: 'You have a new notification!'}];
+    } catch (error) {
+      console.error('Error checking permission status:', error);
+    }
   };
 
+  useEffect(() => {
+    checkPermission();
+    const startBackgroundService = async () => {
+      await BackgroundService.start(task, options);
+    };
+
+    startBackgroundService();
+  }, []);
+
+  AppRegistry.registerHeadlessTask(
+    RNAndroidNotificationListenerHeadlessJsName,
+    () => headlessNotificationListener,
+  );
+
   return (
-    <View>
-      <Text>text</Text>
+    <View style={styles.container}>
+      <Text>Notification</Text>
     </View>
   );
-};
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    paddingTop: 20,
+    paddingBottom: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
 
 export default App;
