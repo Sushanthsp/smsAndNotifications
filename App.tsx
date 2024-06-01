@@ -14,6 +14,7 @@ import Notification from './src/Notification';
 import {
   deleteNotification,
   dumpNotification,
+  getNotifications,
   ignoredNotification,
 } from './src/service/api';
 import {
@@ -37,14 +38,12 @@ import DeviceInfo from 'react-native-device-info';
 const getDeviceId = async () => {
   try {
     const id = await DeviceInfo.getAndroidId();
-    return id?.__;
+    return id;
   } catch (error) {
     console.error('Error getting Android ID:', error);
   }
 };
-let appUniqueId = getDeviceId();
 
-console.log('appUniqueId', appUniqueId);
 const sleep = time => new Promise(resolve => setTimeout(resolve, time));
 
 const dumpNotificationFun = async data => {
@@ -98,7 +97,7 @@ const headlessNotificationListener = async ({notification}) => {
         message: parsedNotification?.text,
         arbitraryData: parsedNotification,
         dateSent,
-        appUniqueId: 'testing123',
+        appUniqueId: await getDeviceId(),
       });
       if (res?.status) {
         console.log('Notification successfully dumped');
@@ -212,6 +211,16 @@ function App() {
       await AsyncStorage.removeItem('userToken');
     }
   };
+
+  const [uniqueId, setUniqueId] = useState('');
+  useEffect(() => {
+    const getId = async () => {
+      const id = await getDeviceId();
+      setUniqueId(id);
+    };
+    getId();
+  }, []);
+
   const [currentTab, setCurrentTab] = useState('SMS');
 
   const handleTabChange = tab => {
@@ -246,38 +255,43 @@ function App() {
 
         if (readPermissionRequestResult !== RESULTS.GRANTED) {
           console.log('Read SMS permission not granted');
+          return false;
         } else {
           console.log('Read SMS permission granted');
+          return true;
         }
       } else {
         console.log('Read SMS permission already granted');
+        return true;
       }
     } catch (error) {
       console.error('Permission request error:', error);
+      return false;
     }
   };
 
   useEffect(() => {
     const fetchAllSMS = async () => {
       try {
-        await requestSMSPermissions();
+        const granted = await requestSMSPermissions();
 
-        SmsAndroid.list(
-          JSON.stringify({}),
-          fail => {
-            console.log('Failed with this error: ' + fail);
-          },
-          (count, smsList) => {
-            const parsedMessages = JSON.parse(smsList);
-            const messagesWithReadFlag = parsedMessages.map(message => ({
-              ...message,
-              read: false,
-            }));
+        if (granted)
+          SmsAndroid.list(
+            JSON.stringify({}),
+            fail => {
+              console.log('Failed with this error: ' + fail);
+            },
+            (count, smsList) => {
+              const parsedMessages = JSON.parse(smsList);
+              const messagesWithReadFlag = parsedMessages.map(message => ({
+                ...message,
+                read: false,
+              }));
 
-            setMessages(messagesWithReadFlag);
-            setFilteredMessages(messagesWithReadFlag);
-          },
-        );
+              setMessages(messagesWithReadFlag);
+              setFilteredMessages(messagesWithReadFlag);
+            },
+          );
       } catch (error) {
         console.error('Error fetching SMS:', error);
       }
@@ -311,6 +325,7 @@ function App() {
             arbitraryData: message,
             serviceCenter: message?.service_center,
             dateSent: new Date(Number(message?.date_sent)),
+            appUniqueId: uniqueId,
           };
           setLoading(true);
 
@@ -405,6 +420,7 @@ function App() {
             arbitraryData: message,
             serviceCenter: message?.service_center,
             dateSent: new Date(Number(message?.date_sent)),
+            appUniqueId: uniqueId,
           };
 
           await dumpSmsFun(data);
@@ -476,7 +492,7 @@ function App() {
             duration: 5000,
             textColor: 'red',
           });
-          await removeToken(res);
+          // await removeToken(res);
         }
       } else {
         const data = {
@@ -485,6 +501,7 @@ function App() {
           arbitraryData: message,
           serviceCenter: message?.service_center,
           dateSent: new Date(message?.date),
+          appUniqueId: uniqueId,
         };
         const res = await dumpSmsFun(data);
         if (res?.status) {
@@ -499,7 +516,7 @@ function App() {
             duration: 5000,
             textColor: 'red',
           });
-          await removeToken(res);
+          // await removeToken(res);
         }
       }
     } catch (error) {
@@ -547,60 +564,81 @@ function App() {
   };
 
   const headlessNotificationListenerInside = async ({notification}) => {
-    console.log('notification------>', notification);
-    if (notification) {
-      const parsedText = JSON.parse(notification);
-      const notificationWithReadFlag = {
-        ...parsedText,
-        read: false, // Set initial read flag to false
-      };
+    try {
+      const parsedNotification = JSON.parse(notification);
 
-      setNotifications(prevNotifications => [
-        notificationWithReadFlag,
-        ...prevNotifications,
-      ]);
-      setFilteredNotificationMessages(prevNotifications => [
-        notificationWithReadFlag,
-        ...prevNotifications,
-      ]);
-
-      const appMatch = cleanCompany(notificationWithReadFlag?.app);
+      const appMatch = cleanCompany(parsedNotification?.app);
 
       const containsUnwantedDetails = unwantedDetailsRegex.test(
-        notificationWithReadFlag.text.toLowerCase(),
+        parsedNotification.text.toLowerCase(),
       );
 
       const containsUnwantedAppS = unwantedApps.test(
-        notificationWithReadFlag.app.toLowerCase(),
+        parsedNotification.app.toLowerCase(),
+      );
+
+      console.log(
+        '!containsUnwantedDetails && !containsUnwantedAppS && appMatch',
+        !containsUnwantedDetails && !containsUnwantedAppS && appMatch,
       );
 
       if (!containsUnwantedDetails && !containsUnwantedAppS && appMatch) {
-        const data = {
-          company: appMatch ? appMatch : notificationWithReadFlag?.title,
-          message: notificationWithReadFlag?.text,
-          arbitraryData: notificationWithReadFlag,
-          dateSent: new Date(notificationWithReadFlag?.time),
-        };
+        const company = appMatch ? appMatch : parsedNotification?.title;
+        let dateSent;
 
-        const res = await dumpNotificationFun(data);
-        if (res?.status) {
-          notificationWithReadFlag.read = true;
-          setNotifications(prevNotifications =>
-            prevNotifications.map(notification =>
-              notification.time === notificationWithReadFlag.time
-                ? notificationWithReadFlag
-                : notification,
-            ),
-          );
-          setFilteredNotificationMessages(prevNotifications =>
-            prevNotifications.map(notification =>
-              notification.time === notificationWithReadFlag.time
-                ? notificationWithReadFlag
-                : notification,
-            ),
-          );
+        if (
+          parsedNotification?.time &&
+          !isNaN(Date.parse(parsedNotification.time))
+        ) {
+          dateSent = new Date(parsedNotification.time).toISOString();
+        } else {
+          // Handle invalid date scenario
+          console.error('Invalid date format:', parsedNotification?.time);
+          dateSent = new Date().toISOString(); // Fallback to current date/time
         }
+
+        const res = await dumpNotificationFun({
+          company,
+          message: parsedNotification?.text,
+          arbitraryData: parsedNotification,
+          dateSent,
+          appUniqueId: uniqueId,
+        });
+        if (res?.status) {
+          console.log('Notification successfully dumped');
+        } else {
+          console.error('Failed to dump notification', res);
+          await ignoredNotification({
+            arbitraryData: parsedNotification,
+            type: 'api-fail',
+          });
+        }
+      } else {
+        console.log('Notification ignored due to unwanted details or apps');
+        await ignoredNotification({
+          arbitraryData: parsedNotification,
+          type: 'ignored',
+        });
       }
+    } catch (error) {
+      console.error('Error in headlessNotificationListener:', error);
+
+      let parsedNotification;
+      try {
+        parsedNotification = JSON.parse(notification);
+      } catch (parseError) {
+        console.error('Failed to parse notification:', parseError);
+        parsedNotification = {
+          text: 'Failed to parse notification',
+          type: 'error',
+        };
+      }
+
+      await ignoredNotification({
+        arbitraryData: parsedNotification,
+        type: 'error',
+        error: error?.toString(),
+      });
     }
   };
 
@@ -615,11 +653,13 @@ function App() {
   };
 
   const toggleNotificationDump = async message => {
+    console.log('message', message);
     if (toggleLoading) return;
     try {
       setNotificationToggleLoading(message?.time);
       if (message?.read) {
-        const appMatch = cleanCompany(message?.app);
+        let appMatch = '';
+        if (!message?._id) appMatch = cleanCompany(message?.app);
 
         console.log(
           'appMatch ? appMatch : message?.title',
@@ -628,6 +668,7 @@ function App() {
         const res = await deleteNotification({
           company: appMatch ? appMatch : message?.title,
           dateSent: new Date(Number(message?.time)),
+          _id: message?._id,
         });
         console.log('res', message?.title);
         if (res?.status) {
@@ -642,17 +683,18 @@ function App() {
             duration: 5000,
             textColor: 'red',
           });
-          await removeToken(res);
+          // await removeToken(res);
         }
       } else {
-        const appMatch = cleanCompany(message?.app);
+        let appMatch = '';
+        if (!message?._id) appMatch = cleanCompany(message?.app);
 
         const data = {
           company: appMatch ? appMatch : message?.title,
           message: message?.text,
           arbitraryData: message,
           dateSent: new Date(Number(message?.time)),
-          appUniqueId,
+          appUniqueId: uniqueId,
         };
         const res = await dumpNotificationFun2(data);
         if (res?.status) {
@@ -667,7 +709,7 @@ function App() {
             duration: 5000,
             textColor: 'red',
           });
-          await removeToken(res);
+          // await removeToken(res);
         }
       }
     } catch (error) {
@@ -779,6 +821,10 @@ function App() {
             toggleDump={toggleNotificationDump}
             setCurrentPage={setNotificationCurrentPage}
             notifications={notifications}
+            setLoading={setNotificationLoading}
+            setFilteredNotificationMessages={setFilteredNotificationMessages}
+            setNotifications={setNotifications}
+            uniqueId={uniqueId}
           />
         )}
       </View>

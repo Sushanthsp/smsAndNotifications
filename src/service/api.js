@@ -75,3 +75,15 @@ export const ignoredNotification = data => {
       });
   });
 };
+export const getNotifications = data => {
+  return new Promise(async (resolve, reject) => {
+    await request
+      .post('/dataAggregator/getNotifications', data)
+      .then(res => {
+        resolve(res.data);
+      })
+      .catch(e => {
+        reject(e);
+      });
+  });
+};

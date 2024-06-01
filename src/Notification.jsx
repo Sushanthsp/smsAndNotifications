@@ -6,27 +6,67 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
+import {getNotifications} from './service/api';
 
 const Notification = ({
   currentPage,
+  setCurrentPage,
   messagesPerPage,
   filteredMessages,
   loading,
+  setLoading,
   handleSearch,
   searchTerm,
   toggleLoading,
   toggleDump,
-  setCurrentPage,
   notifications,
+  setFilteredNotificationMessages,
+  setNotifications,
+  uniqueId,
 }) => {
-  // Calculate index of the last message to be displayed on the current page
+  const [totalCount, setTotalCount] = useState(0);
+
+  const fetchNotifications = async page => {
+    setLoading(true);
+    try {
+      const getNotificationsRes = await getNotifications({
+        page,
+        pageSize: messagesPerPage,
+        appUniqueId: uniqueId,
+      });
+      const formattedNotifications =
+        getNotificationsRes.data?.notifications?.map(notification => ({
+          time: notification?.dateSent,
+          title: notification?.company,
+          text: notification?.message,
+          read: true,
+          _id: notification?._id || '',
+          arbitraryData: notification?.arbitraryData,
+        }));
+
+      setNotifications(prev => [...prev, ...formattedNotifications]);
+      setFilteredNotificationMessages(prev => [
+        ...prev,
+        ...formattedNotifications,
+      ]);
+      setTotalCount(getNotificationsRes.data?.totalCount || 0);
+    } catch (err) {
+      console.log('Error fetching notifications:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (uniqueId && messagesPerPage && currentPage) {
+      fetchNotifications(currentPage);
+    }
+  }, [uniqueId]);
+
   const indexOfLastMessage = currentPage * messagesPerPage;
-  // Calculate index of the first message to be displayed on the current page
   const indexOfFirstMessage = indexOfLastMessage - messagesPerPage;
-  // Slice the messages array to get messages for the current page
   const currentMessages = filteredMessages.slice(
     indexOfFirstMessage,
     indexOfLastMessage,
@@ -99,11 +139,10 @@ const Notification = ({
             <TouchableOpacity
               style={[
                 styles.pageButton,
-                indexOfLastMessage >= notifications.length &&
-                  styles.disabledButton,
+                indexOfLastMessage >= totalCount && styles.disabledButton,
               ]}
               onPress={() => setCurrentPage(currentPage + 1)}
-              disabled={indexOfLastMessage >= notifications.length}>
+              disabled={indexOfLastMessage >= totalCount}>
               <Text style={styles.buttonText}>Next</Text>
             </TouchableOpacity>
           </View>
