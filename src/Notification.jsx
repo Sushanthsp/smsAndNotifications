@@ -44,8 +44,7 @@ const Notification = ({
         </View>
       ) : (
         <>
-          <Text style={styles.title}>Notifications are listening</Text>
-          {/* <TextInput
+          <TextInput
             style={styles.searchInput}
             placeholder="Search"
             onChangeText={handleSearch}
@@ -85,8 +84,8 @@ const Notification = ({
                 )}
               </View>
             ))}
-          </ScrollView> */}
-          {/* <View style={styles.pagination}>
+          </ScrollView>
+          <View style={styles.pagination}>
             <TouchableOpacity
               style={[
                 styles.pageButton,
@@ -107,7 +106,7 @@ const Notification = ({
               disabled={indexOfLastMessage >= notifications.length}>
               <Text style={styles.buttonText}>Next</Text>
             </TouchableOpacity>
-          </View> */}
+          </View>
         </>
       )}
     </View>

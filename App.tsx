@@ -11,7 +11,11 @@ import {
 } from 'react-native';
 import SMSList from './src/Sms';
 import Notification from './src/Notification';
-import {deleteNotification, dumpNotification, ignoredNotification} from './src/service/api';
+import {
+  deleteNotification,
+  dumpNotification,
+  ignoredNotification,
+} from './src/service/api';
 import {
   keywords,
   unwantedApps,
@@ -30,8 +34,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import DeviceInfo from 'react-native-device-info';
 
-const appUniqueId = DeviceInfo.getAndroidId()?._j;
+const getDeviceId = async () => {
+  try {
+    const id = await DeviceInfo.getAndroidId();
+    return id?.__;
+  } catch (error) {
+    console.error('Error getting Android ID:', error);
+  }
+};
+let appUniqueId = getDeviceId();
 
+console.log('appUniqueId', appUniqueId);
 const sleep = time => new Promise(resolve => setTimeout(resolve, time));
 
 const dumpNotificationFun = async data => {
@@ -156,10 +169,8 @@ const options = {
   color: '#ff00ff',
   linkingURI: 'yourSchemeHere://chat/jane',
   parameters: {
-    delay: 1000000,
+    delay: 10000000,
   },
-  persistent: true,
-  stopWithTask: false,
 };
 
 const fetchNewNotifications = async i => {
@@ -534,20 +545,64 @@ function App() {
       console.error('Error checking permission status:', error);
     }
   };
-  useEffect(() => {
-    checkPermission();
-    const startBackgroundService = async () => {
-      await BackgroundService.start(task, options);
-    };
-    const stopBackgroundService = async () => {
-      await BackgroundService.stop();
-    };
-    stopBackgroundService();
 
-    return () => {
-      startBackgroundService();
-    };
-  }, []);
+  const headlessNotificationListenerInside = async ({notification}) => {
+    console.log('notification------>', notification);
+    if (notification) {
+      const parsedText = JSON.parse(notification);
+      const notificationWithReadFlag = {
+        ...parsedText,
+        read: false, // Set initial read flag to false
+      };
+
+      setNotifications(prevNotifications => [
+        notificationWithReadFlag,
+        ...prevNotifications,
+      ]);
+      setFilteredNotificationMessages(prevNotifications => [
+        notificationWithReadFlag,
+        ...prevNotifications,
+      ]);
+
+      const appMatch = cleanCompany(notificationWithReadFlag?.app);
+
+      const containsUnwantedDetails = unwantedDetailsRegex.test(
+        notificationWithReadFlag.text.toLowerCase(),
+      );
+
+      const containsUnwantedAppS = unwantedApps.test(
+        notificationWithReadFlag.app.toLowerCase(),
+      );
+
+      if (!containsUnwantedDetails && !containsUnwantedAppS && appMatch) {
+        const data = {
+          company: appMatch ? appMatch : notificationWithReadFlag?.title,
+          message: notificationWithReadFlag?.text,
+          arbitraryData: notificationWithReadFlag,
+          dateSent: new Date(notificationWithReadFlag?.time),
+        };
+
+        const res = await dumpNotificationFun(data);
+        if (res?.status) {
+          notificationWithReadFlag.read = true;
+          setNotifications(prevNotifications =>
+            prevNotifications.map(notification =>
+              notification.time === notificationWithReadFlag.time
+                ? notificationWithReadFlag
+                : notification,
+            ),
+          );
+          setFilteredNotificationMessages(prevNotifications =>
+            prevNotifications.map(notification =>
+              notification.time === notificationWithReadFlag.time
+                ? notificationWithReadFlag
+                : notification,
+            ),
+          );
+        }
+      }
+    }
+  };
 
   const handleNotificationSearch = text => {
     setSearchNotificationTerm(text);
@@ -625,14 +680,27 @@ function App() {
   //app notification
   const [appState, setAppState] = useState(AppState.currentState);
 
+  const startBackgroundService = async () => {
+    await BackgroundService.start(task, options);
+  };
+  const stopBackgroundService = async () => {
+    await BackgroundService.stop();
+  };
+
   useEffect(() => {
     const handleAppStateChange = nextAppState => {
       console.log('nextAppState', nextAppState);
       if (appState.match(/inactive|background/) && nextAppState === 'active') {
         console.log('App has come to the foreground!');
+
+        stopBackgroundService();
+        AppRegistry.registerHeadlessTask(
+          RNAndroidNotificationListenerHeadlessJsName,
+          () => headlessNotificationListenerInside,
+        );
       } else if (nextAppState === 'background') {
         console.log('App has gone to the background!');
-        // Here you can schedule a notification
+        startBackgroundService();
       }
 
       setAppState(nextAppState);
