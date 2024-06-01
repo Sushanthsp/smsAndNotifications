@@ -730,6 +730,7 @@ function App() {
   };
 
   useEffect(() => {
+    checkPermission();
     const handleAppStateChange = nextAppState => {
       console.log('nextAppState', nextAppState);
       if (appState.match(/inactive|background/) && nextAppState === 'active') {
