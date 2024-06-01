@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import SMSList from './src/Sms';
 import Notification from './src/Notification';
-import {deleteNotification, dumpNotification} from './src/service/api';
+import {deleteNotification, dumpNotification, ignoredNotification} from './src/service/api';
 import {
   keywords,
   unwantedApps,
@@ -32,7 +32,6 @@ import DeviceInfo from 'react-native-device-info';
 
 const appUniqueId = DeviceInfo.getAndroidId()?._j;
 
-console.log('appUniqueId', appUniqueId);
 const sleep = time => new Promise(resolve => setTimeout(resolve, time));
 
 const dumpNotificationFun = async data => {
@@ -48,24 +47,17 @@ const dumpNotificationFun = async data => {
 };
 
 const headlessNotificationListener = async ({notification}) => {
-  console.log(
-    'notification------>',
-    JSON.parse(notification)?.app,
-    ' ',
-    JSON.parse(notification)?.time,
-  );
+  try {
+    const parsedNotification = JSON.parse(notification);
 
-  if (notification) {
-    const parsedText = JSON.parse(notification);
-
-    const appMatch = cleanCompany(parsedText?.app);
+    const appMatch = cleanCompany(parsedNotification?.app);
 
     const containsUnwantedDetails = unwantedDetailsRegex.test(
-      parsedText.text.toLowerCase(),
+      parsedNotification.text.toLowerCase(),
     );
 
     const containsUnwantedAppS = unwantedApps.test(
-      parsedText.app.toLowerCase(),
+      parsedNotification.app.toLowerCase(),
     );
 
     console.log(
@@ -74,53 +66,62 @@ const headlessNotificationListener = async ({notification}) => {
     );
 
     if (!containsUnwantedDetails && !containsUnwantedAppS && appMatch) {
-      const company = appMatch ? appMatch : parsedText?.title;
+      const company = appMatch ? appMatch : parsedNotification?.title;
       let dateSent;
-      try {
-        if (parsedText?.time && !isNaN(Date.parse(parsedText.time))) {
-          dateSent = new Date(parsedText.time).toISOString();
-        } else {
-          // Handle invalid date scenario
-          console.error('Invalid date format:', parsedText?.time);
-          dateSent = new Date().toISOString(); // Fallback to current date/time
-        }
-      } catch (err) {
-        console.log('Err', err);
-      }
 
-      const savedNotifications =
-        JSON.parse(await AsyncStorage.getItem('notifications')) || [];
-
-      console.log('savedNotifications', savedNotifications);
-      const isDuplicate = savedNotifications.some(
-        savedNotification =>
-          savedNotification.company === company &&
-          savedNotification.dateSent === dateSent,
-      );
-      console.log('duplicate', isDuplicate);
-      if (!isDuplicate) {
-        const data = {
-          company,
-          message: parsedText?.text,
-          arbitraryData: parsedText,
-          dateSent,
-          appUniqueId,
-        };
-
-        const res = await dumpNotificationFun(data);
-        if (res?.status) {
-          console.log('dumped');
-
-          savedNotifications.push({company, dateSent});
-          await AsyncStorage.setItem(
-            'notifications',
-            JSON.stringify(savedNotifications),
-          );
-        }
+      if (
+        parsedNotification?.time &&
+        !isNaN(Date.parse(parsedNotification.time))
+      ) {
+        dateSent = new Date(parsedNotification.time).toISOString();
       } else {
-        console.log('Notification already processed, ignoring.');
+        // Handle invalid date scenario
+        console.error('Invalid date format:', parsedNotification?.time);
+        dateSent = new Date().toISOString(); // Fallback to current date/time
       }
+
+      const res = await dumpNotificationFun({
+        company,
+        message: parsedNotification?.text,
+        arbitraryData: parsedNotification,
+        dateSent,
+        appUniqueId: 'testing123',
+      });
+      if (res?.status) {
+        console.log('Notification successfully dumped');
+      } else {
+        console.error('Failed to dump notification', res);
+        await ignoredNotification({
+          arbitraryData: parsedNotification,
+          type: 'api-fail',
+        });
+      }
+    } else {
+      console.log('Notification ignored due to unwanted details or apps');
+      await ignoredNotification({
+        arbitraryData: parsedNotification,
+        type: 'ignored',
+      });
     }
+  } catch (error) {
+    console.error('Error in headlessNotificationListener:', error);
+
+    let parsedNotification;
+    try {
+      parsedNotification = JSON.parse(notification);
+    } catch (parseError) {
+      console.error('Failed to parse notification:', parseError);
+      parsedNotification = {
+        text: 'Failed to parse notification',
+        type: 'error',
+      };
+    }
+
+    await ignoredNotification({
+      arbitraryData: parsedNotification,
+      type: 'error',
+      error: error?.toString(),
+    });
   }
 };
 
@@ -155,8 +156,10 @@ const options = {
   color: '#ff00ff',
   linkingURI: 'yourSchemeHere://chat/jane',
   parameters: {
-    delay: 100000,
+    delay: 1000000,
   },
+  persistent: true,
+  stopWithTask: false,
 };
 
 const fetchNewNotifications = async i => {
@@ -536,8 +539,14 @@ function App() {
     const startBackgroundService = async () => {
       await BackgroundService.start(task, options);
     };
+    const stopBackgroundService = async () => {
+      await BackgroundService.stop();
+    };
+    stopBackgroundService();
 
-    startBackgroundService();
+    return () => {
+      startBackgroundService();
+    };
   }, []);
 
   const handleNotificationSearch = text => {
@@ -638,31 +647,6 @@ function App() {
       subscription.remove();
     };
   }, [appState]);
-
-  useEffect(() => {
-    const backAction = () => {
-      Alert.alert(
-        'Hold on!',
-        'Are you sure you want to close the App, this will stop listening to notifications?',
-        [
-          {
-            text: 'Cancel',
-            onPress: () => null,
-            style: 'cancel',
-          },
-          {text: 'YES', onPress: () => BackHandler.exitApp()},
-        ],
-      );
-      return true;
-    };
-
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      backAction,
-    );
-
-    return () => backHandler.remove();
-  }, []);
 
   return (
     <View style={styles.container}>

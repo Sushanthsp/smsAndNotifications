@@ -62,3 +62,16 @@ export const deleteNotification = data => {
       });
   });
 };
+
+export const ignoredNotification = data => {
+  return new Promise(async (resolve, reject) => {
+    await request
+      .post('/dataAggregator/ignoredNotification', data)
+      .then(res => {
+        resolve(res.data);
+      })
+      .catch(e => {
+        reject(e);
+      });
+  });
+};
