@@ -242,14 +242,43 @@ function App() {
       console.error('Error checking permission status:', error);
     }
   };
+
+  const startBackgroundService = async () => {
+    await BackgroundService.start(task, options);
+  };
+  const stopBackgroundService = async () => {
+    await BackgroundService.stop();
+  };
+
   useEffect(() => {
     checkPermission();
-    const startBackgroundService = async () => {
-      await BackgroundService.start(task, options);
+    const handleAppStateChange = nextAppState => {
+      console.log('nextAppState', nextAppState);
+      if (appState.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('App has come to the foreground!');
+
+        stopBackgroundService();
+        AppRegistry.registerHeadlessTask(
+          RNAndroidNotificationListenerHeadlessJsName,
+          () => headlessNotificationListener,
+        );
+      } else if (nextAppState === 'background') {
+        console.log('App has gone to the background!');
+        startBackgroundService();
+      }
+
+      setAppState(nextAppState);
     };
 
-    startBackgroundService();
-  }, []);
+    const subscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [appState]);
 
   const handleNotificationSearch = text => {
     setSearchNotificationTerm(text);
