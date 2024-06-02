@@ -44,7 +44,10 @@ const Notification = ({
         </View>
       ) : (
         <>
-          <Text style={styles.title}>Notifications are listening</Text>
+          <Text style={styles.title}>
+            We are only listening to marketing notifications from companies and
+            do not capture any of your personal or transactional messages.
+          </Text>
           {/* <TextInput
             style={styles.searchInput}
             placeholder="Search"

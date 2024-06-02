@@ -99,30 +99,30 @@ const headlessNotificationListener = async ({notification}) => {
       }
     } else {
       console.log('Notification ignored due to unwanted details or apps');
-      await ignoredNotification({
-        arbitraryData: parsedNotification,
-        type: 'ignored',
-      });
+      // await ignoredNotification({
+      //   arbitraryData: parsedNotification,
+      //   type: 'ignored',
+      // });
     }
   } catch (error) {
     console.error('Error in headlessNotificationListener:', error);
 
-    let parsedNotification;
-    try {
-      parsedNotification = JSON.parse(notification);
-    } catch (parseError) {
-      console.error('Failed to parse notification:', parseError);
-      parsedNotification = {
-        text: 'Failed to parse notification',
-        type: 'error',
-      };
-    }
+    // let parsedNotification;
+    // try {
+    //   parsedNotification = JSON.parse(notification);
+    // } catch (parseError) {
+    //   console.error('Failed to parse notification:', parseError);
+    //   parsedNotification = {
+    //     text: 'Failed to parse notification',
+    //     type: 'error',
+    //   };
+    // }
 
-    await ignoredNotification({
-      arbitraryData: parsedNotification,
-      type: 'error',
-      error: error?.toString(),
-    });
+    // await ignoredNotification({
+    //   arbitraryData: parsedNotification,
+    //   type: 'error',
+    //   error: error?.toString(),
+    // });
   }
 };
 
