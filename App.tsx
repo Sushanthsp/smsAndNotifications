@@ -37,9 +37,16 @@ import DeviceInfo from 'react-native-device-info';
 const getDeviceId = async () => {
   try {
     const id = await DeviceInfo.getAndroidId();
-    return id?._i;
+    const deviceName = await DeviceInfo.getDeviceName();
+    if (id) {
+      return id + '_' + deviceName;
+    } else {
+      console.warn('Android ID is undefined or null');
+      return null;
+    }
   } catch (error) {
     console.error('Error getting Android ID:', error);
+    return null;
   }
 };
 
