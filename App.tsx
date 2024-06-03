@@ -189,17 +189,6 @@ const cleanCompany = company => {
 };
 
 function App() {
-  const removeToken = async res => {
-    if (
-      res.message === 'Invalid token!' ||
-      res.message === 'You are not authorized' ||
-      res.message === 'You are not authorized to perform this action' ||
-      res.message === 'Invalid token or expired!'
-    ) {
-      console.log('removing token');
-      await AsyncStorage.removeItem('userToken');
-    }
-  };
   const [currentTab, setCurrentTab] = useState('SMS');
 
   const handleTabChange = tab => {
@@ -250,6 +239,8 @@ function App() {
     await BackgroundService.stop();
   };
 
+  const [appState, setAppState] = useState(AppState.currentState);
+
   useEffect(() => {
     checkPermission();
     const handleAppStateChange = nextAppState => {
@@ -257,14 +248,14 @@ function App() {
       if (appState.match(/inactive|background/) && nextAppState === 'active') {
         console.log('App has come to the foreground!');
 
-        stopBackgroundService();
+        // stopBackgroundService();
         AppRegistry.registerHeadlessTask(
           RNAndroidNotificationListenerHeadlessJsName,
           () => headlessNotificationListener,
         );
       } else if (nextAppState === 'background') {
         console.log('App has gone to the background!');
-        startBackgroundService();
+        // startBackgroundService();
       }
 
       setAppState(nextAppState);
@@ -318,7 +309,6 @@ function App() {
             duration: 5000,
             textColor: 'red',
           });
-          await removeToken(res);
         }
       } else {
         const appMatch = cleanCompany(message?.app);
@@ -342,7 +332,6 @@ function App() {
             duration: 5000,
             textColor: 'red',
           });
-          await removeToken(res);
         }
       }
     } catch (error) {
@@ -351,57 +340,6 @@ function App() {
       setNotificationToggleLoading('');
     }
   };
-
-  //app notification
-  const [appState, setAppState] = useState(AppState.currentState);
-
-  useEffect(() => {
-    const handleAppStateChange = nextAppState => {
-      console.log('nextAppState', nextAppState);
-      if (appState.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('App has come to the foreground!');
-      } else if (nextAppState === 'background') {
-        console.log('App has gone to the background!');
-        // Here you can schedule a notification
-      }
-
-      setAppState(nextAppState);
-    };
-
-    const subscription = AppState.addEventListener(
-      'change',
-      handleAppStateChange,
-    );
-
-    return () => {
-      subscription.remove();
-    };
-  }, [appState]);
-
-  useEffect(() => {
-    const backAction = () => {
-      Alert.alert(
-        'Hold on!',
-        'Are you sure you want to close the App, this will stop listening to notifications?',
-        [
-          {
-            text: 'Cancel',
-            onPress: () => null,
-            style: 'cancel',
-          },
-          {text: 'YES', onPress: () => BackHandler.exitApp()},
-        ],
-      );
-      return true;
-    };
-
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      backAction,
-    );
-
-    return () => backHandler.remove();
-  }, []);
 
   return (
     <View style={styles.container}>
