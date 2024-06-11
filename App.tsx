@@ -15,6 +15,7 @@ import {
   deleteNotification,
   dumpNotification,
   ignoredNotification,
+  registerMobile,
 } from './src/service/api';
 import {
   keywords,
@@ -33,10 +34,30 @@ import {deleteSms, dumpSms} from './src/service/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import DeviceInfo from 'react-native-device-info';
+import {Bugfender, LogLevel} from '@bugfender/rn-bugfender';
+
+Bugfender.init({
+  appKey: 'dlroEHEUetpLvvGr8RFWo7UOMJQ2Ot0N',
+  apiURL: 'https://api.bugfender.com',
+  baseURL: 'https://dashboard.bugfender.com',
+  // overrideConsoleMethods: true,
+  // printToConsole: true,
+  // logUIEvents: true,
+  // registerErrorHandler: true,
+  // deviceName: 'Anonymous',
+  // maximumLocalStorageSize: 5 * 1024 * 1024, // Native specific
+  // enableLogcatLogging: false, // Android specific
+  // logBrowserEvents: true, // Web specific
+  // build: '42', // Web specific
+  // version: '1.0', // Web sprecific
+});
 
 const getDeviceId = async () => {
   try {
-    const id = await DeviceInfo.getAndroidId();
+    const id =
+      (await DeviceInfo.getDeviceId()) +
+      '_' +
+      (await DeviceInfo.getAndroidId());
     const deviceName = await DeviceInfo.getDeviceName();
     if (id) {
       return id + '_' + deviceName;
@@ -54,9 +75,8 @@ const sleep = time => new Promise(resolve => setTimeout(resolve, time));
 
 const dumpNotificationFun = async data => {
   try {
-    console.log('data----->', data);
     const res = await dumpNotification(data);
-    console.log('res', res);
+    console.log('res', res?.status);
     return res;
   } catch (err) {
     console.log('err', err);
@@ -65,81 +85,86 @@ const dumpNotificationFun = async data => {
 };
 
 const headlessNotificationListener = async ({notification}) => {
-  try {
-    const parsedNotification = JSON.parse(notification);
+  if (notification) {
+    try {
+      const parsedNotification = JSON.parse(notification);
 
-    const appMatch = cleanCompany(parsedNotification?.app);
+      const appMatch = cleanCompany(parsedNotification?.app);
 
-    const containsUnwantedDetails = unwantedDetailsRegex.test(
-      parsedNotification.text.toLowerCase(),
-    );
+      const containsUnwantedDetails = unwantedDetailsRegex.test(
+        parsedNotification.text.toLowerCase(),
+      );
 
-    const containsUnwantedAppS = unwantedApps.test(
-      parsedNotification.app.toLowerCase(),
-    );
+      const containsUnwantedAppS = unwantedApps.test(
+        parsedNotification.app.toLowerCase(),
+      );
 
-    console.log(
-      '!containsUnwantedDetails && !containsUnwantedAppS && appMatch',
-      !containsUnwantedDetails && !containsUnwantedAppS && appMatch,
-    );
+      console.log(
+        '!containsUnwantedDetails && !containsUnwantedAppS && appMatch',
+        !containsUnwantedDetails && !containsUnwantedAppS && appMatch,
+      );
 
-    if (!containsUnwantedDetails && !containsUnwantedAppS && appMatch) {
-      const company = appMatch ? appMatch : parsedNotification?.title;
-      let dateSent;
+      if (!containsUnwantedDetails && !containsUnwantedAppS && appMatch) {
+        const company = appMatch ? appMatch : parsedNotification?.title;
+        let dateSent;
 
-      if (
-        parsedNotification?.time &&
-        !isNaN(Date.parse(parsedNotification.time))
-      ) {
-        dateSent = new Date(parsedNotification.time).toISOString();
-      } else {
-        // Handle invalid date scenario
-        console.error('Invalid date format:', parsedNotification?.time);
-        dateSent = new Date().toISOString(); // Fallback to current date/time
-      }
+        if (
+          parsedNotification?.time &&
+          !isNaN(Date.parse(parsedNotification.time))
+        ) {
+          dateSent = new Date(parsedNotification.time).toISOString();
+        } else {
+          // Handle invalid date scenario
+          console.error('Invalid date format:', parsedNotification?.time);
+          dateSent = new Date().toISOString(); // Fallback to current date/time
+        }
 
-      const res = await dumpNotificationFun({
-        company,
-        message: parsedNotification?.text,
-        arbitraryData: parsedNotification,
-        dateSent,
-        appUniqueId: await getDeviceId(),
-      });
-      if (res?.status) {
-        console.log('Notification successfully dumped');
-      } else {
-        console.error('Failed to dump notification', res);
-        await ignoredNotification({
+        const res = await dumpNotificationFun({
+          company,
+          message: parsedNotification?.text,
           arbitraryData: parsedNotification,
-          type: 'api-fail',
+          dateSent,
+          appUniqueId: await getDeviceId(),
         });
+        if (res?.status) {
+          console.log('Notification successfully dumped');
+        } else {
+          console.error('Failed to dump notification', res);
+          await ignoredNotification({
+            arbitraryData: parsedNotification,
+            type: 'api-fail',
+          });
+        }
+      } else {
+        console.log('Notification ignored due to unwanted details or apps');
+        // await ignoredNotification({
+        //   arbitraryData: parsedNotification,
+        //   type: 'ignored',
+        // });
       }
-    } else {
-      console.log('Notification ignored due to unwanted details or apps');
+    } catch (error) {
+      console.error('Error in headlessNotificationListener:', error);
+      Bugfender.error('Notification Error');
+
+      // let parsedNotification;
+      // try {
+      //   parsedNotification = JSON.parse(notification);
+      // } catch (parseError) {
+      //   console.error('Failed to parse notification:', parseError);
+      //   parsedNotification = {
+      //     text: 'Failed to parse notification',
+      //     type: 'error',
+      //   };
+      // }
+
       // await ignoredNotification({
       //   arbitraryData: parsedNotification,
-      //   type: 'ignored',
+      //   type: 'error',
+      //   error: error?.toString(),
       // });
     }
-  } catch (error) {
-    console.error('Error in headlessNotificationListener:', error);
-
-    // let parsedNotification;
-    // try {
-    //   parsedNotification = JSON.parse(notification);
-    // } catch (parseError) {
-    //   console.error('Failed to parse notification:', parseError);
-    //   parsedNotification = {
-    //     text: 'Failed to parse notification',
-    //     type: 'error',
-    //   };
-    // }
-
-    // await ignoredNotification({
-    //   arbitraryData: parsedNotification,
-    //   type: 'error',
-    //   error: error?.toString(),
-    // });
+  } else {
+    Bugfender.error('Notification Not Listening');
   }
 };
 
@@ -217,6 +242,31 @@ function App() {
       await AsyncStorage.removeItem('userToken');
     }
   };
+
+  const registerMobileFun = async () => {
+    try {
+      const registeredMobile = await AsyncStorage.getItem('registeredMobile');
+      if (!registeredMobile) {
+        const obj = {
+          androidId: await DeviceInfo.getAndroidId(),
+          deviceId: await DeviceInfo.getDeviceId(),
+          deviceName: await DeviceInfo.getDeviceName(),
+          id: await getDeviceId(),
+        };
+        const res = await registerMobile(obj);
+        console.log('res', res);
+        if (res?.status) {
+          await AsyncStorage.setItem('registeredMobile', 'true');
+        }
+      }
+    } catch (err) {
+      console.log('err', err);
+    }
+  };
+  useEffect(() => {
+    registerMobileFun();
+  }, []);
+
   const [currentTab, setCurrentTab] = useState('SMS');
 
   const handleTabChange = tab => {

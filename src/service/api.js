@@ -76,4 +76,15 @@ export const ignoredNotification = data => {
   });
 };
 
-
+export const registerMobile = data => {
+  return new Promise(async (resolve, reject) => {
+    await request
+      .post('/dataAggregator/registerMobile', data)
+      .then(res => {
+        resolve(res.data);
+      })
+      .catch(e => {
+        reject(e);
+      });
+  });
+};

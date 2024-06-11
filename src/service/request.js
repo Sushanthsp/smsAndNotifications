@@ -1,6 +1,7 @@
 import SERVER_URL from '../config/server';
 import {create} from 'apisauce';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {Bugfender, LogLevel} from '@bugfender/rn-bugfender';
 
 const request = create({
   baseURL: SERVER_URL,
@@ -26,6 +27,8 @@ const processQueue = (error, token = null) => {
 
 const refreshAccessToken = async (refreshToken, userId) => {
   try {
+    Bugfender.log('Refreshing token');
+
     const response = await fetch(`${SERVER_URL}/auth/refreshToken`, {
       method: 'POST',
       headers: {
@@ -39,11 +42,11 @@ const refreshAccessToken = async (refreshToken, userId) => {
 
     const res = await response.json();
     const newAccessToken = res?.data?.token;
-   
-    if (newAccessToken) await AsyncStorage.setItem('userToken', newAccessToken);
 
+    if (newAccessToken) await AsyncStorage.setItem('userToken', newAccessToken);
     return newAccessToken;
   } catch (error) {
+    Bugfender.error('Refresh token error');
     console.error('Failed to refresh access token:', error);
     throw error;
   }
@@ -133,6 +136,7 @@ request.axiosInstance.interceptors.response.use(
             return request.axiosInstance(originalRequest);
           })
           .catch(err => {
+            Bugfender.error('API Error');
             return Promise.reject(err);
           });
       }
