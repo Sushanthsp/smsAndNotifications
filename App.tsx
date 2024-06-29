@@ -472,18 +472,70 @@ function App() {
 
   return (
     <View style={styles.container}>
-      <Notification
-        currentPage={currentNotificationPage}
-        messagesPerPage={messagesNotificationPerPage}
-        filteredMessages={filteredNotificationMessages}
-        loading={Notificationloading}
-        handleSearch={handleNotificationSearch}
-        searchTerm={searchNotificationTerm}
-        toggleLoading={toggleNotificationLoading}
-        toggleDump={toggleNotificationDump}
-        setCurrentPage={setNotificationCurrentPage}
-        notifications={notifications}
-      />
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[
+            styles.tab,
+            currentTab === 'SMS' ? styles.activeTab : styles.inactiveTab,
+          ]}
+          onPress={() => handleTabChange('SMS')}>
+          <Text
+            style={[
+              currentTab === 'SMS' ? styles.activeTabText : styles.tabText,
+            ]}>
+            SMS
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.tab,
+            currentTab === 'Notification'
+              ? styles.activeTab
+              : styles.inactiveTab,
+          ]}
+          onPress={() => handleTabChange('Notification')}>
+          <Text
+            style={[
+              currentTab === 'Notification'
+                ? styles.activeTabText
+                : styles.tabText,
+            ]}>
+            Notification
+          </Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.content}>
+        {currentTab === 'SMS' ? (
+          <SMSList
+            currentPage={currentPage}
+            messagesPerPage={messagesPerPage}
+            filteredMessages={filteredMessages}
+            loading={loading}
+            progress={progress}
+            handleSearch={handleSearch}
+            searchTerm={searchTerm}
+            toggleLoading={toggleLoading}
+            toggleDump={toggleDump}
+            messages={messages}
+            setCurrentPage={setCurrentPage}
+            setReadSms={setReadSms}
+            readSms={readSms}
+          />
+        ) : (
+          <Notification
+            currentPage={currentNotificationPage}
+            messagesPerPage={messagesNotificationPerPage}
+            filteredMessages={filteredNotificationMessages}
+            loading={Notificationloading}
+            handleSearch={handleNotificationSearch}
+            searchTerm={searchNotificationTerm}
+            toggleLoading={toggleNotificationLoading}
+            toggleDump={toggleNotificationDump}
+            setCurrentPage={setNotificationCurrentPage}
+            notifications={notifications}
+          />
+        )}
+      </View>
     </View>
   );
 }
@@ -532,5 +584,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
+
 
 export default App;
