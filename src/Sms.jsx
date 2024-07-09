@@ -74,6 +74,11 @@ const SMSList = ({
       ) : (
         <>
           <Text style={styles.title}>List of SMS Messages</Text>
+          <Text style={styles.red}>
+            We do not monitor any transactional or OTP messages from your
+            mobile device.
+          </Text>
+
           <TextInput
             style={styles.searchInput}
             placeholder="Search"
@@ -137,7 +142,7 @@ const SMSList = ({
               <Text style={styles.buttonText}>Next</Text>
             </TouchableOpacity>
 
-            {(!pressed) && (
+            {!pressed && (
               <TouchableOpacity
                 style={styles.stopIcon}
                 onPress={async () => {
@@ -166,6 +171,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 20,
     color: '#333',
+  },
+  red: {
+    fontSize: 15,
+    marginBottom: 20,
+    color: 'red',
   },
   searchInput: {
     width: 300,
